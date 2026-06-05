@@ -390,7 +390,7 @@
       <input type="file" id="evoPayInput" accept=".csv,.xlsx" style="display:none" onchange="onEvoPaySelect(this.files[0])">
     </div>
 
-    <div style="margin-top: 20px;">
+    <div style="margin-top: 20px;" id="cashReceivedSection">
       <div class="section-label">Cash received</div>
       <div class="input-row">
         <div class="input-prefix">$</div>
@@ -514,9 +514,10 @@
     document.getElementById('dropSub').textContent = '';
     document.getElementById('dropFilename').textContent = f.name;
 
-    // Show EvoPay section for TicketEvolution files
+    // Show EvoPay section and hide cash received for TicketEvolution files
     const isTE = f.name.toLowerCase().includes('ticketevolution');
     document.getElementById('evoPaySection').style.display = isTE ? 'block' : 'none';
+    document.getElementById('cashReceivedSection').style.display = isTE ? 'none' : 'block';
     if (!isTE) { evoPayFile = null; }
 
     checkReady();
@@ -649,6 +650,7 @@
     document.getElementById('fileInput').value = '';
     document.getElementById('evoPayInput').value = '';
     document.getElementById('evoPaySection').style.display = 'none';
+    document.getElementById('cashReceivedSection').style.display = 'block';
     document.getElementById('evoPayDropZone').className = 'drop-zone';
     document.getElementById('evoPayDropTitle').textContent = 'Drop EvoPay file here';
     document.getElementById('evoPayDropSub').textContent = 'CSV or XLSX — or click to browse';
