@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payments Applied Processor</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23375623'/><path d='M8 16h16M16 9l7 7-7 7' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f5f4;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 48px 16px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 560px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 32px;
+    }
+
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      background: #375623;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-mark svg { width: 18px; height: 18px; fill: #fff; }
+
+    .logo-text {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1a1a1a;
+      letter-spacing: -0.2px;
+    }
+
+    .logo-sub {
+      font-size: 12px;
+      color: #888;
+      margin-top: 1px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      border: 1px solid #e8e8e6;
+      padding: 28px;
+      margin-bottom: 16px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 16px;
+    }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 1.5px dashed #d0d0cc;
+      border-radius: 10px;
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      background: #fafafa;
+    }
+
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: #375623;
+      background: #f0f4ee;
+    }
+
+    .drop-zone.has-file {
+      border-style: solid;
+      border-color: #375623;
+      background: #f0f4ee;
+    }
+
+    .drop-icon {
+      width: 36px;
+      height: 36px;
+      margin: 0 auto 12px;
+      background: #eef2eb;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .drop-icon svg { width: 18px; height: 18px; stroke: #375623; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+    .drop-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: #1a1a1a;
+      margin-bottom: 4px;
+    }
+
+    .drop-sub {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .drop-filename {
+      font-size: 13px;
+      font-weight: 500;
+      color: #375623;
+      margin-top: 8px;
+    }
+
+    /* Cash input */
+    .input-row {
+      display: flex;
+      align-items: center;
+      border: 1px solid #e0e0dc;
+      border-radius: 8px;
+      overflow: hidden;
+      height: 40px;
+      width: 220px;
+      transition: border-color 0.15s;
+    }
+
+    .input-row:focus-within { border-color: #375623; }
+
+    .input-prefix {
+      padding: 0 12px;
+      font-size: 14px;
+      color: #999;
+      background: #f7f7f5;
+      border-right: 1px solid #e0e0dc;
+      height: 100%;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-row input {
+      border: none;
+      outline: none;
+      font-size: 14px;
+      padding: 0 12px;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      color: #1a1a1a;
+    }
+
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .btn {
+      height: 38px;
+      padding: 0 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: opacity 0.15s, background 0.15s;
+    }
+
+    .btn-primary {
+      background: #375623;
+      color: #fff;
+    }
+
+    .btn-primary:hover:not(:disabled) { background: #2d4720; }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-ghost {
+      background: transparent;
+      color: #666;
+      border: 1px solid #e0e0dc;
+    }
+
+    .btn-ghost:hover { background: #f4f5f4; color: #333; }
+
+    .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Verification banner */
+    .verification {
+      display: none;
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: none;
+      align-items: center;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .verification.match {
+      background: #edf7ed;
+      border: 1px solid #b6ddb6;
+    }
+
+    .verification.no-match {
+      background: #fdecea;
+      border: 1px solid #f5b8b4;
+    }
+
+    .verify-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .match .verify-icon { background: #c6ecc6; }
+    .no-match .verify-icon { background: #fbd0cc; }
+
+    .verify-icon svg { width: 16px; height: 16px; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .match .verify-icon svg { stroke: #2d7a2d; }
+    .no-match .verify-icon svg { stroke: #c0392b; }
+
+    .verify-label {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .match .verify-label { color: #2d7a2d; }
+    .no-match .verify-label { color: #c0392b; }
+
+    .verify-detail {
+      font-size: 12px;
+      color: #666;
+    }
+
+    /* Summary cards */
+    .summary-cards {
+      display: none;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .summary-card {
+      background: #f7f8f6;
+      border-radius: 10px;
+      padding: 14px 16px;
+      border: 1px solid #eaeae6;
+    }
+
+    .summary-card-label {
+      font-size: 11px;
+      color: #999;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .summary-card-value {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1a1a1a;
+      letter-spacing: -0.3px;
+    }
+
+    /* Downloads */
+    .downloads {
+      display: none;
+    }
+
+    .download-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid #f0f0ec;
+    }
+
+    .download-item:last-child { border-bottom: none; }
+
+    .download-info { display: flex; align-items: center; gap: 10px; }
+
+    .download-file-icon {
+      width: 32px;
+      height: 32px;
+      background: #eef2eb;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .download-file-icon svg { width: 16px; height: 16px; stroke: #375623; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+    .download-name { font-size: 13px; font-weight: 500; color: #1a1a1a; }
+    .download-type { font-size: 11px; color: #999; margin-top: 2px; }
+
+    .btn-download {
+      height: 32px;
+      padding: 0 14px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 500;
+      background: #375623;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+
+    .btn-download:hover { background: #2d4720; }
+    .btn-download svg { width: 13px; height: 13px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 0.8s linear infinite; display: inline-block; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 20 20"><path d="M3 10h14M10 3l7 7-7 7"/></svg>
+    </div>
+    <div>
+      <div class="logo-text">Payments Applied Processor</div>
+    </div>
+  </div>
+
+  <!-- Upload card -->
+  <div class="card">
+    <div class="section-label">Upload</div>
+
+    <div class="drop-zone" id="dropZone"
+         onclick="document.getElementById('fileInput').click()"
+         ondragover="onDragOver(event)"
+         ondragleave="onDragLeave(event)"
+         ondrop="onDrop(event)">
+      <div class="drop-icon">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <div class="drop-title" id="dropTitle">Drop CSV file here</div>
+      <div class="drop-sub" id="dropSub">or click to browse</div>
+      <div class="drop-filename" id="dropFilename"></div>
+    </div>
+    <input type="file" id="fileInput" accept=".csv" style="display:none" onchange="onFileSelect(this.files[0])">
+
+    <!-- EvoPay upload zone — shown only for TicketEvolution files -->
+    <div id="evoPaySection" style="display:none; margin-top: 20px;">
+      <div class="section-label">EvoPay transactions file</div>
+      <div class="drop-zone" id="evoPayDropZone"
+           onclick="document.getElementById('evoPayInput').click()"
+           ondragover="onDragOver2(event)"
+           ondragleave="onDragLeave2(event)"
+           ondrop="onDrop2(event)">
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="drop-title" id="evoPayDropTitle">Drop EvoPay file here</div>
+        <div class="drop-sub" id="evoPayDropSub">CSV or XLSX — or click to browse</div>
+        <div class="drop-filename" id="evoPayDropFilename"></div>
+      </div>
+      <input type="file" id="evoPayInput" accept=".csv,.xlsx" style="display:none" onchange="onEvoPaySelect(this.files[0])">
+    </div>
+
+    <div style="margin-top: 20px;" id="cashReceivedSection">
+      <div class="section-label">Cash received</div>
+      <div class="input-row">
+        <div class="input-prefix">$</div>
+        <input type="number" id="cashInput" placeholder="0.00" step="0.01" min="0" oninput="onCashInput()">
+      </div>
+    </div>
+
+    <p style="font-size: 15px; font-weight: 700; color: #e00000; margin-top: 16px; letter-spacing: 0.3px;">MAKE SURE TO USE COLUMN S FOR REASON AND INPUT THE RELEVANT NOTES FOR CHARGEBACKS BEFORE UPLOADING HERE.</p>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="processBtn" onclick="processFile()" disabled>
+        <svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+        <span id="processBtnText">Process file</span>
+      </button>
+      <button class="btn btn-ghost" onclick="reset()">
+        <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+        Clear &amp; reset
+      </button>
+    </div>
+
+    <!-- Verification -->
+    <div class="verification" id="verification">
+      <div class="verify-icon">
+        <svg id="verifyIconSvg" viewBox="0 0 24 24"></svg>
+      </div>
+      <div>
+        <div class="verify-label" id="verifyLabel"></div>
+        <div class="verify-detail" id="verifyDetail"></div>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="summary-cards" id="summaryCards">
+      <div class="summary-card">
+        <div class="summary-card-label">Receive payment</div>
+        <div class="summary-card-value" id="cardRP">—</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card-label">Bank deposit</div>
+        <div class="summary-card-value" id="cardBD">—</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-card-label">Combined total</div>
+        <div class="summary-card-value" id="cardTotal">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Downloads card -->
+  <div class="card downloads" id="downloadsCard">
+    <div class="section-label">Output files</div>
+    <div class="download-item">
+      <div class="download-info">
+        <div class="download-file-icon">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <div>
+          <div class="download-name" id="appliedName">Applied Payments</div>
+          <div class="download-type">Summary + all tabs</div>
+        </div>
+      </div>
+      <a class="btn-download" id="appliedLink" href="#">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </a>
+    </div>
+    <div class="download-item">
+      <div class="download-info">
+        <div class="download-file-icon">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <div>
+          <div class="download-name" id="depositName">Bank Deposit</div>
+          <div class="download-type">QBO import file</div>
+        </div>
+      </div>
+      <a class="btn-download" id="depositLink" href="#">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let selectedFile = null;
+  let evoPayFile = null;
+  let sessionId = null;
+  let combinedTotal = null;
+
+  function fmt(n) {
+    return '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function onDragOver(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.add('drag-over');
+  }
+
+  function onDragLeave(e) {
+    document.getElementById('dropZone').classList.remove('drag-over');
+  }
+
+  function onDrop(e) {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.name.endsWith('.csv')) setFile(f);
+  }
+
+  function onFileSelect(f) {
+    if (f) setFile(f);
+  }
+
+  function setFile(f) {
+    selectedFile = f;
+    const dz = document.getElementById('dropZone');
+    dz.classList.add('has-file');
+    document.getElementById('dropTitle').textContent = 'File selected';
+    document.getElementById('dropSub').textContent = '';
+    document.getElementById('dropFilename').textContent = f.name;
+
+    // Show EvoPay section and hide cash received for TicketEvolution files
+    const isTE = f.name.toLowerCase().includes('ticketevolution');
+    document.getElementById('evoPaySection').style.display = isTE ? 'block' : 'none';
+    document.getElementById('cashReceivedSection').style.display = isTE ? 'none' : 'block';
+    if (!isTE) { evoPayFile = null; }
+
+    checkReady();
+  }
+
+  function onDragOver2(e) {
+    e.preventDefault();
+    document.getElementById('evoPayDropZone').classList.add('drag-over');
+  }
+
+  function onDragLeave2(e) {
+    document.getElementById('evoPayDropZone').classList.remove('drag-over');
+  }
+
+  function onDrop2(e) {
+    e.preventDefault();
+    document.getElementById('evoPayDropZone').classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) setEvoPayFile(f);
+  }
+
+  function onEvoPaySelect(f) {
+    if (f) setEvoPayFile(f);
+  }
+
+  function setEvoPayFile(f) {
+    evoPayFile = f;
+    const dz = document.getElementById('evoPayDropZone');
+    dz.classList.add('has-file');
+    document.getElementById('evoPayDropTitle').textContent = 'File selected';
+    document.getElementById('evoPayDropSub').textContent = '';
+    document.getElementById('evoPayDropFilename').textContent = f.name;
+    checkReady();
+  }
+
+  function onCashInput() {
+    checkReady();
+    if (combinedTotal !== null) showVerification();
+  }
+
+  function checkReady() {
+    const cash = document.getElementById('cashInput').value;
+    const ready = selectedFile && cash !== '';
+    document.getElementById('processBtn').disabled = !ready;
+  }
+
+  function showVerification() {
+    const cashVal = parseFloat(document.getElementById('cashInput').value);
+    if (isNaN(cashVal) || combinedTotal === null) return;
+
+    const el = document.getElementById('verification');
+    el.style.display = 'flex';
+
+    const match = Math.abs(cashVal - combinedTotal) < 0.01;
+    const icon = document.getElementById('verifyIconSvg');
+    el.className = 'verification ' + (match ? 'match' : 'no-match');
+
+    if (match) {
+      icon.innerHTML = '<polyline points="20 6 9 17 4 12"/>';
+      document.getElementById('verifyLabel').textContent = 'Amounts match';
+      document.getElementById('verifyDetail').textContent = fmt(cashVal) + ' cash received = ' + fmt(combinedTotal) + ' in entries';
+    } else {
+      icon.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
+      document.getElementById('verifyLabel').textContent = "Amounts don't match";
+      const diff = cashVal - combinedTotal;
+      document.getElementById('verifyDetail').textContent =
+        fmt(cashVal) + ' cash received vs ' + fmt(combinedTotal) + ' in entries (' + (diff > 0 ? '+' : '') + fmt(diff) + ')';
+    }
+  }
+
+  async function processFile() {
+    const btn = document.getElementById('processBtn');
+    const btnText = document.getElementById('processBtnText');
+    btn.disabled = true;
+    btnText.innerHTML = '<span class="spinner">⟳</span> Processing…';
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    if (evoPayFile) formData.append('evopay_file', evoPayFile);
+
+    try {
+      const resp = await fetch('/process', { method: 'POST', body: formData });
+      const data = await resp.json();
+
+      if (data.error) {
+        alert('Error: ' + data.error);
+        btn.disabled = false;
+        btnText.textContent = 'Process file';
+        return;
+      }
+
+      sessionId = data.session_id;
+      combinedTotal = data.combined_total;
+
+      // Summary cards
+      document.getElementById('cardRP').textContent = fmt(data.receive_payment_amt);
+      document.getElementById('cardBD').textContent = fmt(data.bank_deposit_total);
+      document.getElementById('cardTotal').textContent = fmt(data.combined_total);
+      document.getElementById('summaryCards').style.display = 'grid';
+
+      // Verification
+      showVerification();
+
+      // Downloads
+      document.getElementById('appliedName').textContent = data.memo + ' Applied Payments.xlsx';
+      document.getElementById('depositName').textContent = data.memo + ' Bank Deposit.xlsx';
+      document.getElementById('appliedLink').href = '/download/' + sessionId + '/applied';
+      document.getElementById('depositLink').href = '/download/' + sessionId + '/deposit';
+      document.getElementById('downloadsCard').style.display = 'block';
+
+      btnText.textContent = 'Process file';
+      btn.disabled = false;
+
+    } catch (err) {
+      alert('Unexpected error. Please try again.');
+      btn.disabled = false;
+      btnText.textContent = 'Process file';
+    }
+  }
+
+  async function reset() {
+    if (sessionId) {
+      await fetch('/reset/' + sessionId, { method: 'POST' });
+      sessionId = null;
+    }
+    selectedFile = null;
+    evoPayFile = null;
+    combinedTotal = null;
+
+    document.getElementById('fileInput').value = '';
+    document.getElementById('evoPayInput').value = '';
+    document.getElementById('evoPaySection').style.display = 'none';
+    document.getElementById('cashReceivedSection').style.display = 'block';
+    document.getElementById('evoPayDropZone').className = 'drop-zone';
+    document.getElementById('evoPayDropTitle').textContent = 'Drop EvoPay file here';
+    document.getElementById('evoPayDropSub').textContent = 'CSV or XLSX — or click to browse';
+    document.getElementById('evoPayDropFilename').textContent = '';
+    document.getElementById('cashInput').value = '';
+    document.getElementById('dropZone').className = 'drop-zone';
+    document.getElementById('dropTitle').textContent = 'Drop CSV file here';
+    document.getElementById('dropSub').textContent = 'or click to browse';
+    document.getElementById('dropFilename').textContent = '';
+    document.getElementById('processBtn').disabled = true;
+    document.getElementById('verification').style.display = 'none';
+    document.getElementById('summaryCards').style.display = 'none';
+    document.getElementById('downloadsCard').style.display = 'none';
+    document.getElementById('appliedLink').href = '#';
+    document.getElementById('depositLink').href = '#';
+  }
+</script>
+</body>
+</html>
