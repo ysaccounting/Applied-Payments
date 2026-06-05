@@ -410,10 +410,13 @@ def process(csv_path, filename, evopay_path=None):
     # Summary tab
     ws_sum = wb1.create_sheet("Summary")
     ws_sum.cell(row=1, column=1, value="Receive Payment").font = SECTION_FONT
-    write_header_row(ws_sum, 2, ["Memo", "Amount", "Network"])
+    write_header_row(ws_sum, 2, ["Memo", "Amount", "Network", "Date", "Deposit #", "Bank Account"])
     write_data_cell(ws_sum, 3, 1, memo)
     write_data_cell(ws_sum, 3, 2, receive_payment_amt, fmt="#,##0.00", align=ALIGN_CENTER)
     write_data_cell(ws_sum, 3, 3, deposit_network_full, align=ALIGN_CENTER)
+    write_data_cell(ws_sum, 3, 4, remit_date_str, align=ALIGN_CENTER)
+    write_data_cell(ws_sum, 3, 5, memo)
+    write_data_cell(ws_sum, 3, 6, bank_account, align=ALIGN_CENTER)
     ws_sum.cell(row=5, column=1, value="Bank Deposit").font = SECTION_FONT
     write_header_row(ws_sum, 6, ["Account", "Amount", "Network", "Date", "Deposit #", "Bank Account"])
     for i, row in deposit_rows.iterrows():
