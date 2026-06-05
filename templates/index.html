@@ -560,7 +560,8 @@
 
   function checkReady() {
     const cash = document.getElementById('cashInput').value;
-    const ready = selectedFile && cash !== '';
+    const isTE = selectedFile && selectedFile.name.toLowerCase().includes('ticketevolution');
+    const ready = selectedFile && (isTE || cash !== '');
     document.getElementById('processBtn').disabled = !ready;
   }
 
