@@ -472,6 +472,21 @@
         Download
       </a>
     </div>
+    <div class="download-item" id="receivePaymentDownload" style="display:none;">
+      <div class="download-info">
+        <div class="download-file-icon">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <div>
+          <div class="download-name" id="receiveName">Receive Payment</div>
+          <div class="download-type">QBO import file</div>
+        </div>
+      </div>
+      <a class="btn-download" id="receiveLink" href="#">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </a>
+    </div>
   </div>
 
 </div>
@@ -623,10 +638,17 @@
       showVerification();
 
       // Downloads
-      document.getElementById('appliedName').textContent = data.memo + ' Applied Payments.xlsx';
-      document.getElementById('depositName').textContent = data.memo + ' Bank Deposit.xlsx';
+      document.getElementById('appliedName').textContent = data.file_prefix + ' Applied Payments.xlsx';
+      document.getElementById('depositName').textContent = data.file_prefix + ' Bank Deposit.xlsx';
       document.getElementById('appliedLink').href = '/download/' + sessionId + '/applied';
       document.getElementById('depositLink').href = '/download/' + sessionId + '/deposit';
+      if (data.has_receive_payment) {
+        document.getElementById('receiveName').textContent = data.file_prefix + ' Receive Payment.xlsx';
+        document.getElementById('receiveLink').href = '/download/' + sessionId + '/receive';
+        document.getElementById('receivePaymentDownload').style.display = 'flex';
+      } else {
+        document.getElementById('receivePaymentDownload').style.display = 'none';
+      }
       document.getElementById('downloadsCard').style.display = 'block';
 
       btnText.textContent = 'Process file';
@@ -667,6 +689,8 @@
     document.getElementById('downloadsCard').style.display = 'none';
     document.getElementById('appliedLink').href = '#';
     document.getElementById('depositLink').href = '#';
+    document.getElementById('receiveLink').href = '#';
+    document.getElementById('receivePaymentDownload').style.display = 'none';
   }
 </script>
 </body>

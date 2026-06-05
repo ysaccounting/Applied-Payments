@@ -403,31 +403,126 @@ def process(csv_path, filename, evopay_path=None):
     bank_deposit_total = round(deposit_rows["Amount"].sum(), 2)
     combined_total = round(receive_payment_amt + bank_deposit_total, 2)
 
+    # ── Determine if this is a TE (per-date) file ────────────────────────────
+    is_te = bool(evopay_dates)
+
+    # ── Build per-date summary rows for TE files ──────────────────────────────
+    def _get_filename_prefix(memo_str):
+        """Extract everything before the date portion of the filename, stripping trailing underscore."""
+        import re as _re
+        m = _re.search(r'_\d{1,2}-\d{1,2}-\d{2,4}', memo_str)
+        return memo_str[:m.start()].rstrip('_') if m else memo_str
+
+    def _date_to_filename_fmt(date_str):
+        """Convert mm/dd/yyyy to MM-DD-YY for use in filenames."""
+        try:
+            dt = pd.to_datetime(date_str)
+            return dt.strftime("%m-%d-%y")
+        except Exception:
+            return date_str
+
+    if is_te:
+        fn_prefix = _get_filename_prefix(memo)
+        all_dates = sorted(set(evopay_dates.values()))
+
+        # Per-date Receive Payment rows
+        rp_rows = []
+        for d in all_dates:
+            d_rows = ys_df[ys_df["Date"] == d]
+            pay = d_rows[d_rows["Type"] == "Payment"]["Amount"].sum()
+            rec = d_rows[d_rows["Type"] == "Recoup"]["Amount"].sum()
+            amt = round(pay + rec, 2)
+            dep_num = f"{fn_prefix}_{_date_to_filename_fmt(d)}"
+            rp_rows.append({"Date": d, "Amount": amt, "Deposit #": dep_num})
+
+        # Per-date Bank Deposit rows
+        bd_rows_by_date = []
+        for d in all_dates:
+            dep_num = f"{fn_prefix}_{_date_to_filename_fmt(d)}"
+            # Affiliates
+            aff_d = affiliates_df[affiliates_df["Date"] == d].groupby("Company")["Amount"].sum().reset_index()
+            aff_d.columns = ["Account", "Amount"]
+            # StubHub loan
+            sh_d = stubhub_df[stubhub_df["Date"] == d].groupby("Company")["Amount"].sum().reset_index()
+            sh_d.columns = ["Account", "Amount"]
+            # Other
+            oth_d = other_df[other_df["Date"] == d].groupby("Company")["Amount"].sum().reset_index()
+            oth_d.columns = ["Account", "Amount"]
+            # Cancellation fees
+            cancel_d = round(ys_df[(ys_df["Date"] == d) & (ys_df["Type"] == "Cancellation Fees")]["Amount"].sum(), 2)
+            cancel_row_d = pd.DataFrame([{"Account": "Cancellation Fees", "Amount": cancel_d}]) if cancel_d != 0 else pd.DataFrame(columns=["Account","Amount"])
+            d_rows = pd.concat([aff_d, sh_d, oth_d, cancel_row_d], ignore_index=True)
+            d_rows["Amount"] = d_rows["Amount"].round(2)
+            d_rows["Network"] = deposit_network_full
+            d_rows["Date"] = d
+            d_rows["Deposit #"] = dep_num
+            d_rows["Bank Account"] = bank_account
+            bd_rows_by_date.append(d_rows)
+
+        all_bd_rows = pd.concat(bd_rows_by_date, ignore_index=True)
+
+        # Date range for filenames
+        min_date = _date_to_filename_fmt(all_dates[0])
+        max_date = _date_to_filename_fmt(all_dates[-1])
+        date_range_str = f"{min_date} to {max_date}"
+    else:
+        date_range_str = None
+
     # ── Build Applied Payments workbook ───────────────────────────────────────
     wb1 = openpyxl.Workbook()
     wb1.remove(wb1.active)
 
     # Summary tab
     ws_sum = wb1.create_sheet("Summary")
-    ws_sum.cell(row=1, column=1, value="Receive Payment").font = SECTION_FONT
-    write_header_row(ws_sum, 2, ["Memo", "Amount", "Network", "Date", "Deposit #", "Bank Account"])
-    write_data_cell(ws_sum, 3, 1, memo)
-    write_data_cell(ws_sum, 3, 2, receive_payment_amt, fmt="#,##0.00", align=ALIGN_CENTER)
-    write_data_cell(ws_sum, 3, 3, deposit_network_full, align=ALIGN_CENTER)
-    write_data_cell(ws_sum, 3, 4, remit_date_str, align=ALIGN_CENTER)
-    write_data_cell(ws_sum, 3, 5, memo)
-    write_data_cell(ws_sum, 3, 6, bank_account, align=ALIGN_CENTER)
-    ws_sum.cell(row=5, column=1, value="Bank Deposit").font = SECTION_FONT
-    write_header_row(ws_sum, 6, ["Account", "Amount", "Network", "Date", "Deposit #", "Bank Account"])
-    for i, row in deposit_rows.iterrows():
-        r = 7 + i
-        write_data_cell(ws_sum, r, 1, row["Account"])
-        write_data_cell(ws_sum, r, 2, row["Amount"], fmt="#,##0.00", align=ALIGN_CENTER)
-        write_data_cell(ws_sum, r, 3, row["Network"], align=ALIGN_CENTER)
-        write_data_cell(ws_sum, r, 4, row["Date"], align=ALIGN_CENTER)
-        write_data_cell(ws_sum, r, 5, row["Deposit #"])
-        write_data_cell(ws_sum, r, 6, row["Bank Account"], align=ALIGN_CENTER)
-    for col_idx, w in enumerate([28, 14, 14, 12, 28, 14], 1):
+    SUM_COLS = ["Memo", "Amount", "Network", "Date", "Deposit #", "Bank Account"]
+    BD_COLS  = ["Account", "Amount", "Network", "Date", "Deposit #", "Bank Account"]
+    SUM_WIDTHS = [28, 14, 20, 12, 32, 14]
+
+    if is_te:
+        ws_sum.cell(row=1, column=1, value="Receive Payment").font = SECTION_FONT
+        write_header_row(ws_sum, 2, SUM_COLS)
+        cur_row = 3
+        for rp in rp_rows:
+            write_data_cell(ws_sum, cur_row, 1, rp["Deposit #"])
+            write_data_cell(ws_sum, cur_row, 2, rp["Amount"], fmt="#,##0.00", align=ALIGN_CENTER)
+            write_data_cell(ws_sum, cur_row, 3, deposit_network_full, align=ALIGN_CENTER)
+            write_data_cell(ws_sum, cur_row, 4, rp["Date"], align=ALIGN_CENTER)
+            write_data_cell(ws_sum, cur_row, 5, rp["Deposit #"])
+            write_data_cell(ws_sum, cur_row, 6, bank_account, align=ALIGN_CENTER)
+            cur_row += 1
+        cur_row += 1  # blank row
+        ws_sum.cell(row=cur_row, column=1, value="Bank Deposit").font = SECTION_FONT
+        cur_row += 1
+        write_header_row(ws_sum, cur_row, BD_COLS)
+        cur_row += 1
+        for _, row in all_bd_rows.iterrows():
+            write_data_cell(ws_sum, cur_row, 1, row["Account"])
+            write_data_cell(ws_sum, cur_row, 2, row["Amount"], fmt="#,##0.00", align=ALIGN_CENTER)
+            write_data_cell(ws_sum, cur_row, 3, row["Network"], align=ALIGN_CENTER)
+            write_data_cell(ws_sum, cur_row, 4, row["Date"], align=ALIGN_CENTER)
+            write_data_cell(ws_sum, cur_row, 5, row["Deposit #"])
+            write_data_cell(ws_sum, cur_row, 6, row["Bank Account"], align=ALIGN_CENTER)
+            cur_row += 1
+    else:
+        ws_sum.cell(row=1, column=1, value="Receive Payment").font = SECTION_FONT
+        write_header_row(ws_sum, 2, SUM_COLS)
+        write_data_cell(ws_sum, 3, 1, memo)
+        write_data_cell(ws_sum, 3, 2, receive_payment_amt, fmt="#,##0.00", align=ALIGN_CENTER)
+        write_data_cell(ws_sum, 3, 3, deposit_network_full, align=ALIGN_CENTER)
+        write_data_cell(ws_sum, 3, 4, remit_date_str, align=ALIGN_CENTER)
+        write_data_cell(ws_sum, 3, 5, memo)
+        write_data_cell(ws_sum, 3, 6, bank_account, align=ALIGN_CENTER)
+        ws_sum.cell(row=5, column=1, value="Bank Deposit").font = SECTION_FONT
+        write_header_row(ws_sum, 6, BD_COLS)
+        for i, row in deposit_rows.iterrows():
+            r = 7 + i
+            write_data_cell(ws_sum, r, 1, row["Account"])
+            write_data_cell(ws_sum, r, 2, row["Amount"], fmt="#,##0.00", align=ALIGN_CENTER)
+            write_data_cell(ws_sum, r, 3, row["Network"], align=ALIGN_CENTER)
+            write_data_cell(ws_sum, r, 4, row["Date"], align=ALIGN_CENTER)
+            write_data_cell(ws_sum, r, 5, row["Deposit #"])
+            write_data_cell(ws_sum, r, 6, row["Bank Account"], align=ALIGN_CENTER)
+    for col_idx, w in enumerate(SUM_WIDTHS, 1):
         ws_sum.column_dimensions[get_column_letter(col_idx)].width = w
 
     # Data tabs
@@ -443,13 +538,14 @@ def process(csv_path, filename, evopay_path=None):
 
     # ── Build Bank Deposit workbook ───────────────────────────────────────────
     bd_cols = ["Account", "Amount", "Network", "Date", "Deposit #", "Bank Account"]
-    bd_col_widths = [28, 14, 14, 12, 28, 14]
+    bd_col_widths = [28, 14, 20, 12, 32, 14]
+    bd_source = all_bd_rows if is_te else deposit_rows
 
     wb2 = openpyxl.Workbook()
     ws_bd = wb2.active
     ws_bd.title = "Bank Deposit"
     write_header_row(ws_bd, 1, bd_cols)
-    for i, row in deposit_rows.iterrows():
+    for i, row in bd_source.iterrows():
         r = 2 + i
         write_data_cell(ws_bd, r, 1, row["Account"])
         write_data_cell(ws_bd, r, 2, row["Amount"], fmt="#,##0.00", align=ALIGN_CENTER)
@@ -462,10 +558,34 @@ def process(csv_path, filename, evopay_path=None):
     ws_bd.freeze_panes = "A2"
     ws_bd.auto_filter.ref = f"A1:{get_column_letter(len(bd_cols))}1"
 
+    # ── Build Receive Payment workbook (TE only) ──────────────────────────────
+    wb3 = None
+    if is_te:
+        rp_cols = ["Memo", "Amount", "Network", "Date", "Deposit #", "Bank Account"]
+        rp_col_widths = [32, 14, 20, 12, 32, 14]
+        wb3 = openpyxl.Workbook()
+        ws_rp = wb3.active
+        ws_rp.title = "Receive Payment"
+        write_header_row(ws_rp, 1, rp_cols)
+        for i, rp in enumerate(rp_rows):
+            r = 2 + i
+            write_data_cell(ws_rp, r, 1, rp["Deposit #"])
+            write_data_cell(ws_rp, r, 2, rp["Amount"], fmt="#,##0.00", align=ALIGN_CENTER)
+            write_data_cell(ws_rp, r, 3, deposit_network_full, align=ALIGN_CENTER)
+            write_data_cell(ws_rp, r, 4, rp["Date"], align=ALIGN_CENTER)
+            write_data_cell(ws_rp, r, 5, rp["Deposit #"])
+            write_data_cell(ws_rp, r, 6, bank_account, align=ALIGN_CENTER)
+        for col_idx, w in enumerate(rp_col_widths, 1):
+            ws_rp.column_dimensions[get_column_letter(col_idx)].width = w
+        ws_rp.freeze_panes = "A2"
+        ws_rp.auto_filter.ref = f"A1:{get_column_letter(len(rp_cols))}1"
+
     return {
         "wb_applied": wb1,
         "wb_deposit": wb2,
+        "wb_receive": wb3,
         "memo": memo,
+        "date_range_str": date_range_str,
         "receive_payment_amt": receive_payment_amt,
         "bank_deposit_total": bank_deposit_total,
         "combined_total": combined_total,
