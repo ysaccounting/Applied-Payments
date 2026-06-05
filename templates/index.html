@@ -372,6 +372,24 @@
     </div>
     <input type="file" id="fileInput" accept=".csv" style="display:none" onchange="onFileSelect(this.files[0])">
 
+    <!-- EvoPay upload zone — shown only for TicketEvolution files -->
+    <div id="evoPaySection" style="display:none; margin-top: 20px;">
+      <div class="section-label">EvoPay transactions file</div>
+      <div class="drop-zone" id="evoPayDropZone"
+           onclick="document.getElementById('evoPayInput').click()"
+           ondragover="onDragOver2(event)"
+           ondragleave="onDragLeave2(event)"
+           ondrop="onDrop2(event)">
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="drop-title" id="evoPayDropTitle">Drop EvoPay file here</div>
+        <div class="drop-sub" id="evoPayDropSub">CSV or XLSX — or click to browse</div>
+        <div class="drop-filename" id="evoPayDropFilename"></div>
+      </div>
+      <input type="file" id="evoPayInput" accept=".csv,.xlsx" style="display:none" onchange="onEvoPaySelect(this.files[0])">
+    </div>
+
     <div style="margin-top: 20px;">
       <div class="section-label">Cash received</div>
       <div class="input-row">
@@ -460,6 +478,7 @@
 
 <script>
   let selectedFile = null;
+  let evoPayFile = null;
   let sessionId = null;
   let combinedTotal = null;
 
@@ -494,6 +513,42 @@
     document.getElementById('dropTitle').textContent = 'File selected';
     document.getElementById('dropSub').textContent = '';
     document.getElementById('dropFilename').textContent = f.name;
+
+    // Show EvoPay section for TicketEvolution files
+    const isTE = f.name.toLowerCase().includes('ticketevolution');
+    document.getElementById('evoPaySection').style.display = isTE ? 'block' : 'none';
+    if (!isTE) { evoPayFile = null; }
+
+    checkReady();
+  }
+
+  function onDragOver2(e) {
+    e.preventDefault();
+    document.getElementById('evoPayDropZone').classList.add('drag-over');
+  }
+
+  function onDragLeave2(e) {
+    document.getElementById('evoPayDropZone').classList.remove('drag-over');
+  }
+
+  function onDrop2(e) {
+    e.preventDefault();
+    document.getElementById('evoPayDropZone').classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) setEvoPayFile(f);
+  }
+
+  function onEvoPaySelect(f) {
+    if (f) setEvoPayFile(f);
+  }
+
+  function setEvoPayFile(f) {
+    evoPayFile = f;
+    const dz = document.getElementById('evoPayDropZone');
+    dz.classList.add('has-file');
+    document.getElementById('evoPayDropTitle').textContent = 'File selected';
+    document.getElementById('evoPayDropSub').textContent = '';
+    document.getElementById('evoPayDropFilename').textContent = f.name;
     checkReady();
   }
 
@@ -540,6 +595,7 @@
 
     const formData = new FormData();
     formData.append('file', selectedFile);
+    if (evoPayFile) formData.append('evopay_file', evoPayFile);
 
     try {
       const resp = await fetch('/process', { method: 'POST', body: formData });
@@ -587,9 +643,16 @@
       sessionId = null;
     }
     selectedFile = null;
+    evoPayFile = null;
     combinedTotal = null;
 
     document.getElementById('fileInput').value = '';
+    document.getElementById('evoPayInput').value = '';
+    document.getElementById('evoPaySection').style.display = 'none';
+    document.getElementById('evoPayDropZone').className = 'drop-zone';
+    document.getElementById('evoPayDropTitle').textContent = 'Drop EvoPay file here';
+    document.getElementById('evoPayDropSub').textContent = 'CSV or XLSX — or click to browse';
+    document.getElementById('evoPayDropFilename').textContent = '';
     document.getElementById('cashInput').value = '';
     document.getElementById('dropZone').className = 'drop-zone';
     document.getElementById('dropTitle').textContent = 'Drop CSV file here';

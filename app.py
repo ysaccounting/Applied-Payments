@@ -48,12 +48,25 @@ def process_file():
     csv_path = os.path.join(UPLOAD_FOLDER, f"{session_id}_{f.filename}")
     f.save(csv_path)
 
+    # Handle optional EvoPay file for TicketEvolution uploads
+    evopay_path = None
+    evopay_file = request.files.get("evopay_file")
+    if evopay_file and evopay_file.filename:
+        evopay_ext = os.path.splitext(evopay_file.filename)[1].lower()
+        evopay_path = os.path.join(UPLOAD_FOLDER, f"{session_id}_evopay{evopay_ext}")
+        evopay_file.save(evopay_path)
+
     try:
-        result = process(csv_path, f.filename)
+        result = process(csv_path, f.filename, evopay_path=evopay_path)
     except Exception as e:
         if os.path.exists(csv_path):
             os.remove(csv_path)
+        if evopay_path and os.path.exists(evopay_path):
+            os.remove(evopay_path)
         return jsonify({"error": str(e)}), 500
+    finally:
+        if evopay_path and os.path.exists(evopay_path):
+            os.remove(evopay_path)
 
     memo = result["memo"]
     applied_name = f"{memo} Applied Payments.xlsx"

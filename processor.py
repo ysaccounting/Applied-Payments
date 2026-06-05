@@ -23,7 +23,6 @@ COMPANY_MAPPING = {
     "Needle Tickets LLC-Fee": "Affiliates",
     "Pollak Tickets-Fee": "Affiliates",
     "Ticketwonders LLC-Fee": "Affiliates",
-    "Ticketwonders2 LLC-Fee": "Affiliates",
     "Yoni Levine-Fee": "Affiliates",
     "YourTickets-Fee": "Affiliates",
     "YS Katz-Fee": "Affiliates",
@@ -52,7 +51,6 @@ COMPANY_MAPPING = {
     "TV Test Company": "Other",
     "Best Tix": "Affiliates",
     "Ticketwonders LLC": "Affiliates",
-    "Ticketwonders2 LLC": "Affiliates",
     "Bearhawk - Aaron": "Affiliates",
     "Bearhawk - Chris": "Affiliates",
     "Bearhawk - Dylan": "Affiliates",
@@ -87,6 +85,8 @@ COMPANY_MAPPING = {
     "Cancellation Fees": "Y&S - Deposit",
     "Slash Financial Inc": "Affiliates",
     "Slash Financial Inc-Fee": "Affiliates",
+    "Ticketwonders2 LLC": "Affiliates",
+    "Ticketwonders2 LLC-Fee": "Affiliates",
 }
 
 # Case-insensitive lookup dict
@@ -258,7 +258,7 @@ def _resolve_shifted_cols(r):
         }
 
 
-def build_row(r, remit_date_str, network):
+def build_row(r, remit_date_str, network, evopay_dates=None):
     company_raw = str(r["Company"]).strip() if pd.notna(r["Company"]) else ""
     is_fee = company_raw.endswith("-Fee")
     is_cancellation = company_raw == "Cancellation Fees"
@@ -281,7 +281,7 @@ def build_row(r, remit_date_str, network):
 
     return {
         "Company": company_out,
-        "Date": remit_date_str,
+        "Date": (evopay_dates.get(str(r["Order#"]).strip(), remit_date_str) if evopay_dates else remit_date_str),
         "Network": network,
         "Type": type_val,
         "Order#": str(int(r["Order#"])) if pd.notna(r["Order#"]) and str(r["Order#"]).isdigit() else (str(r["Order#"]) if pd.notna(r["Order#"]) else ""),
@@ -340,7 +340,7 @@ def style_data_tab(ws, df):
     ws.auto_filter.ref = f"A1:{get_column_letter(len(DATA_COLS))}1"
 
 
-def process(csv_path, filename):
+def process(csv_path, filename, evopay_path=None):
     raw = pd.read_csv(csv_path, usecols=range(19), engine="python", on_bad_lines="skip")
     raw.columns = raw.columns.str.strip()  # remove leading/trailing spaces from column names
     network_display, remit_date, deposit_network, bank_account = parse_filename(filename)
@@ -349,7 +349,28 @@ def process(csv_path, filename):
     deposit_network_full = f"{deposit_network} (C)"  # (C) only on bank deposit
     memo = os.path.splitext(filename)[0]
 
-    rows = [build_row(r, remit_date_str, network) for _, r in raw.iterrows()]
+    # Build EvoPay order->date lookup if provided
+    evopay_dates = {}
+    if evopay_path:
+        try:
+            if evopay_path.endswith('.csv'):
+                ep = pd.read_csv(evopay_path)
+            else:
+                ep = pd.read_excel(evopay_path)
+            ep.columns = ep.columns.str.strip()
+            ep_transfers = ep[ep['Type'].astype(str).str.strip().str.lower() == 'transfer'].copy()
+            for _, row in ep_transfers.iterrows():
+                order = str(row['Order - PO #']).strip()
+                try:
+                    dt = pd.to_datetime(str(row['Date Created']), errors='coerce')
+                    if not pd.isna(dt):
+                        evopay_dates[order] = dt.strftime('%m/%d/%Y')
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"Warning: could not read EvoPay file: {e}")
+
+    rows = [build_row(r, remit_date_str, network, evopay_dates) for _, r in raw.iterrows()]
     df_out = pd.DataFrame(rows)
 
     ys_df = df_out[df_out["_category"].isin(["Y&S - Deposit", "Y&S - RecPmt"])].copy()
