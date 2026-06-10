@@ -120,6 +120,9 @@ def parse_filename(filename):
     """
     base = os.path.splitext(filename)[0]
     base = base.replace(" ", "_")
+    # Strip trailing copy indicators like (1), (2) etc before parsing
+    import re as _re2
+    base = _re2.sub(r"\(\d+\)$", "", base).rstrip("_")
     parts = base.split("_")
 
     import re as _re
