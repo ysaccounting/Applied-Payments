@@ -469,9 +469,20 @@ def process(csv_path, filename, evopay_path=None):
 
         all_bd_rows = pd.concat(bd_rows_by_date, ignore_index=True)
 
-        # Date range for filenames
-        min_date = _date_to_filename_fmt(all_dates[0])
-        max_date = _date_to_filename_fmt(all_dates[-1])
+        # Date range for filenames — use only dates with actual activity (non-zero RP or BD rows)
+        active_dates = set()
+        for rp in rp_rows:
+            active_dates.add(rp["Date"])
+        for _, row in all_bd_rows.iterrows():
+            if row["Amount"] != 0:
+                active_dates.add(row["Date"])
+        active_dates_sorted = sorted(active_dates)
+        if active_dates_sorted:
+            min_date = _date_to_filename_fmt(active_dates_sorted[0])
+            max_date = _date_to_filename_fmt(active_dates_sorted[-1])
+        else:
+            min_date = _date_to_filename_fmt(all_dates[0])
+            max_date = _date_to_filename_fmt(all_dates[-1])
         date_range_str = f"{min_date} to {max_date}"
     else:
         date_range_str = None
