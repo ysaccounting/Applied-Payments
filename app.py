@@ -73,7 +73,7 @@ def process_file():
     if date_range:
         # Strip the date from the end of memo (e.g. YS_TicketEvolution_06-05-26 -> YS_TicketEvolution)
         import re as _re
-        memo_base = _re.sub(r'_\d{1,2}-\d{1,2}-\d{2,4}$', '', memo).rstrip('_')
+        memo_base = _re.sub(r'_\d{1,2}-\d{1,2}-\d{2,4}.*$', '', memo).rstrip('_')
         file_prefix = f"{memo_base} {date_range}"
     else:
         file_prefix = memo

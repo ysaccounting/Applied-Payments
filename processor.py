@@ -431,13 +431,15 @@ def process(csv_path, filename, evopay_path=None):
         fn_prefix = _get_filename_prefix(memo)
         all_dates = sorted(set(evopay_dates.values()))
 
-        # Per-date Receive Payment rows
+        # Per-date Receive Payment rows (exclude dates with zero amount)
         rp_rows = []
         for d in all_dates:
             d_rows = ys_df[ys_df["Date"] == d]
             pay = d_rows[d_rows["Type"] == "Payment"]["Amount"].sum()
             rec = d_rows[d_rows["Type"] == "Recoup"]["Amount"].sum()
             amt = round(pay + rec, 2)
+            if amt == 0:
+                continue
             dep_num = f"{fn_prefix}_{_date_to_filename_fmt(d)}"
             rp_rows.append({"Date": d, "Amount": amt, "Deposit #": dep_num})
 
