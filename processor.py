@@ -346,6 +346,9 @@ def style_data_tab(ws, df):
 def process(csv_path, filename, evopay_path=None):
     raw = pd.read_csv(csv_path, usecols=range(19), engine="python", on_bad_lines="skip")
     raw.columns = raw.columns.str.strip()  # remove leading/trailing spaces from column names
+    # Validate that column S (Reason) is present
+    if "Reason" not in raw.columns:
+        raise ValueError("Column S (Reason) is missing from this file. Please add the Reason column before uploading.")
     network_display, remit_date, deposit_network, bank_account = parse_filename(filename)
     remit_date_str = remit_date.strftime("%m/%d/%Y")
     network = network_display  # no (C) on detail tabs
