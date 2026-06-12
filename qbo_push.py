@@ -143,19 +143,13 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
             network_name = row.get("network", "")
             customer = search_customer(token_data, realm_id, network_name) if network_name else None
 
-            detail = {
-                "AccountRef": {"value": acct["Id"], "name": acct["Name"]},
-            }
-            if customer:
-                detail["Entity"] = {
-                    "Type": "Customer",
-                    "EntityRef": {"value": customer["Id"], "name": customer["DisplayName"]},
-                }
             line = {
                 "Amount": row["amount"],
                 "Description": dep_num,
                 "DetailType": "DepositLineDetail",
-                "DepositLineDetail": detail,
+                "DepositLineDetail": {
+                    "AccountRef": {"value": acct["Id"], "name": acct["Name"]},
+                },
             }
             lines.append(line)
 
