@@ -6,6 +6,20 @@ from collections import defaultdict
 from qbo_auth import api_get, api_post, get_valid_token
 
 
+# Network short codes for QBO DocNumber (21 char limit)
+NETWORK_SHORT_CODES = {
+    "stubhub": "SH",
+    "vivid seats": "VS",
+    "ticket evolution": "TEVO",
+    "ticketsnow": "TNOW",
+    "gotickets": "GOTIX",
+    "seatgeek": "SG",
+    "gametime": "GT",
+    "ticketnetwork": "TND",
+    "mercury": "MERC",
+}
+
+
 def _parse_date(date_str: str) -> str:
     """Convert mm/dd/yyyy to yyyy-mm-dd for QBO API."""
     try:
@@ -13,6 +27,32 @@ def _parse_date(date_str: str) -> str:
         return dt.strftime("%Y-%m-%d")
     except Exception:
         return date_str
+
+
+def _short_doc_number(deposit_num: str, network: str) -> str:
+    """Build a QBO-safe DocNumber (max 21 chars) from deposit# and network.
+    Format: <SHORT_CODE>_MM-DD-YY
+    Falls back to truncating deposit_num if network not in map.
+    """
+    import re
+    # Extract date portion from deposit_num (MM-DD-YY or MM-DD-YYYY)
+    m = re.search(r"(\d{1,2}-\d{1,2}-\d{2,4})$", deposit_num)
+    date_part = m.group(1) if m else ""
+    # Normalize to MM-DD-YY
+    if date_part:
+        parts = date_part.split("-")
+        if len(parts[2]) == 4:
+            date_part = f"{parts[0]}-{parts[1]}-{parts[2][2:]}"
+
+    # Get short code — strip (C), (CAD) etc from network name for lookup
+    net_clean = re.sub(r"\s*\(.*?\)", "", network).strip().lower()
+    short = NETWORK_SHORT_CODES.get(net_clean, "")
+    if not short:
+        # fallback: first 4 chars of network
+        short = re.sub(r"[^A-Z0-9]", "", network.upper())[:4]
+
+    doc = f"{short}_{date_part}" if date_part else deposit_num[:21]
+    return doc[:21]
 
 
 def search_account(token_data: dict, realm_id: str, name: str):
@@ -65,6 +105,7 @@ def push_receive_payments(token_data: dict, realm_id: str, summary_data: dict) -
             "TotalAmt": row["amount"],
             "TxnDate": _parse_date(row["date"]),
             "PrivateNote": row["memo"],
+            "PaymentRefNum": _short_doc_number(row["deposit_num"], row.get("network", "")),
             "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
         }
         try:
@@ -102,13 +143,19 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
             network_name = row.get("network", "")
             customer = search_customer(token_data, realm_id, network_name) if network_name else None
 
+            detail = {
+                "AccountRef": {"value": acct["Id"], "name": acct["Name"]},
+            }
+            if customer:
+                detail["Entity"] = {
+                    "Type": "Customer",
+                    "EntityRef": {"value": customer["Id"], "name": customer["DisplayName"]},
+                }
             line = {
                 "Amount": row["amount"],
                 "Description": dep_num,
                 "DetailType": "DepositLineDetail",
-                "DepositLineDetail": {
-                    "AccountRef": {"value": acct["Id"], "name": acct["Name"]},
-                },
+                "DepositLineDetail": detail,
             }
             lines.append(line)
 
@@ -121,10 +168,12 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
                              "error": f"Bank account not found in QBO: {rows[0]['bank_account']}"})
             continue
 
+        network_name = rows[0].get("network", "")
+        doc_num = _short_doc_number(dep_num, network_name)
         payload = {
             "TxnDate": _parse_date(date),
             "PrivateNote": dep_num,
-            "DocNumber": dep_num,
+            "DocNumber": doc_num,
             "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
             "Line": lines,
         }
