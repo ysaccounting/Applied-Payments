@@ -120,6 +120,7 @@ def process_file():
             "amount": float(row.get("Amount", 0)),
             "date": row.get("Date", ""),
             "deposit_num": row.get("Deposit #", ""),
+            "network": result.get("deposit_network_full", ""),
             "bank_account": result.get("bank_account", "FFB Chkg"),
         })
 

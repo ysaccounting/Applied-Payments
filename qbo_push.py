@@ -1,8 +1,8 @@
 """
 QBO push logic — Receive Payment and Bank Deposit entries.
 """
-import re
 from datetime import datetime
+from collections import defaultdict
 from qbo_auth import api_get, api_post, get_valid_token
 
 
@@ -15,7 +15,7 @@ def _parse_date(date_str: str) -> str:
         return date_str
 
 
-def search_account(token_data: dict, realm_id: str, name: str) -> dict | None:
+def search_account(token_data: dict, realm_id: str, name: str):
     """Find a QBO account by name."""
     q = name.replace("'", "\\'")
     result = api_get(token_data, realm_id, f"query?query=SELECT * FROM Account WHERE Name = '{q}'&minorversion=65")
@@ -23,8 +23,8 @@ def search_account(token_data: dict, realm_id: str, name: str) -> dict | None:
     return accounts[0] if accounts else None
 
 
-def search_customer(token_data: dict, realm_id: str, name: str) -> dict | None:
-    """Find a QBO customer by name."""
+def search_customer(token_data: dict, realm_id: str, name: str):
+    """Find a QBO customer by DisplayName."""
     q = name.replace("'", "\\'")
     result = api_get(token_data, realm_id, f"query?query=SELECT * FROM Customer WHERE DisplayName = '{q}'&minorversion=65")
     customers = result.get("QueryResponse", {}).get("Customer", [])
@@ -39,28 +39,38 @@ def get_company_info(token_data: dict, realm_id: str) -> dict:
 def push_receive_payments(token_data: dict, realm_id: str, summary_data: dict) -> list:
     """
     Push Receive Payment entries to QBO.
-    summary_data: {
-        "rp_rows": [{"memo": str, "amount": float, "date": str, "deposit_num": str, "bank_account": str}]
-        "ar_account_id": str,
-        "deposit_account_id": str,
-    }
+    Each rp_row: {"memo": str, "amount": float, "date": str, "network": str, "bank_account": str}
+    Network is used as the QBO Customer name.
     """
     results = []
     token_data = get_valid_token(token_data)
 
     for row in summary_data["rp_rows"]:
+        # Look up customer using network name
+        customer = search_customer(token_data, realm_id, row["network"])
+        if not customer:
+            results.append({"status": "error", "memo": row["memo"],
+                             "error": f"Customer not found in QBO: {row['network']}"})
+            continue
+
+        # Look up deposit account (bank account)
+        bank_acct = search_account(token_data, realm_id, row["bank_account"])
+        if not bank_acct:
+            results.append({"status": "error", "memo": row["memo"],
+                             "error": f"Bank account not found in QBO: {row['bank_account']}"})
+            continue
+
         payload = {
+            "CustomerRef": {"value": customer["Id"], "name": customer["DisplayName"]},
             "TotalAmt": row["amount"],
             "TxnDate": _parse_date(row["date"]),
             "PrivateNote": row["memo"],
-            "Line": [{
-                "Amount": row["amount"],
-                "LinkedTxn": [],
-            }],
+            "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
         }
         try:
             result = api_post(token_data, realm_id, "payment?minorversion=65", payload)
-            results.append({"status": "ok", "memo": row["memo"], "id": result.get("Payment", {}).get("Id")})
+            results.append({"status": "ok", "memo": row["memo"],
+                             "id": result.get("Payment", {}).get("Id")})
         except Exception as e:
             results.append({"status": "error", "memo": row["memo"], "error": str(e)})
 
@@ -70,16 +80,11 @@ def push_receive_payments(token_data: dict, realm_id: str, summary_data: dict) -
 def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> list:
     """
     Push Bank Deposit entries to QBO.
-    summary_data: {
-        "deposit_rows": [{"account": str, "amount": float, "date": str, "deposit_num": str, "bank_account": str}],
-        "deposit_account_id": str,
-    }
+    Groups rows by deposit_num — one QBO Deposit per deposit#.
     """
     results = []
     token_data = get_valid_token(token_data)
 
-    # Group rows by deposit number (one deposit per deposit#)
-    from collections import defaultdict
     groups = defaultdict(list)
     for row in summary_data["deposit_rows"]:
         groups[row["deposit_num"]].append(row)
@@ -88,7 +93,6 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
         date = rows[0]["date"]
         lines = []
         for row in rows:
-            # Look up account
             acct = search_account(token_data, realm_id, row["account"])
             if not acct:
                 results.append({"status": "error", "deposit_num": dep_num,
@@ -105,7 +109,6 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
         if not lines:
             continue
 
-        # Look up bank account
         bank_acct = search_account(token_data, realm_id, rows[0]["bank_account"])
         if not bank_acct:
             results.append({"status": "error", "deposit_num": dep_num,
