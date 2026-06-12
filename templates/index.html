@@ -507,13 +507,9 @@
         <button onclick="qboDisconnect()" style="font-size:12px;color:#999;background:none;border:none;cursor:pointer;">Disconnect</button>
       </div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <button class="btn btn-primary" id="pushDepositBtn" onclick="pushToQBO('deposit')">
+        <button class="btn btn-primary" id="pushAllBtn" onclick="pushToQBO()">
           <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
-          Push Bank Deposit
-        </button>
-        <button class="btn btn-primary" id="pushReceiveBtn" onclick="pushToQBO('receive')" style="display:none;">
-          <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
-          Push Receive Payment
+          Push to QBO
         </button>
       </div>
       <div id="qboPushResult" style="margin-top:14px; font-size:13px; display:none;"></div>
@@ -682,6 +678,7 @@
     document.getElementById('qboCard').style.display = 'none';
     document.getElementById('qboPushResult').style.display = 'none';
     qboSummaryData = null;
+    document.getElementById('pushAllBtn').disabled = false;
       }
       document.getElementById('downloadsCard').style.display = 'block';
 
@@ -697,7 +694,7 @@
       document.getElementById('qboCard').style.display = 'block';
       checkQBOStatus();
       // Show Receive Payment push button only for TE files
-      document.getElementById('pushReceiveBtn').style.display = 'inline-flex';
+
 
       btnText.textContent = 'Process file';
       btn.disabled = false;
@@ -737,9 +734,9 @@
     document.getElementById('qboDisconnected').style.display = 'block';
   }
 
-  async function pushToQBO(pushType) {
+  async function pushToQBO() {
     if (!qboSummaryData || !sessionId) return;
-    const btn = pushType === 'deposit' ? document.getElementById('pushDepositBtn') : document.getElementById('pushReceiveBtn');
+    const btn = document.getElementById('pushAllBtn');
     const origText = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner">⟳</span> Pushing…';
@@ -748,25 +745,36 @@
     resultEl.style.display = 'none';
 
     try {
-      const resp = await fetch('/qbo/push/' + sessionId + '/' + pushType, {
+      // Push Bank Deposit
+      const dResp = await fetch('/qbo/push/' + sessionId + '/deposit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(qboSummaryData[pushType])
+        body: JSON.stringify(qboSummaryData.deposit)
       });
-      const data = await resp.json();
-
-      if (resp.status === 401 && data.auth_required) {
+      if (dResp.status === 401) {
         window.location.href = '/qbo/connect?session_id=' + sessionId;
         return;
       }
+      const dData = await dResp.json();
+
+      // Push Receive Payment
+      const rResp = await fetch('/qbo/push/' + sessionId + '/receive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(qboSummaryData.receive)
+      });
+      const rData = await rResp.json();
+
+      const allErrors = [...(dData.errors || []), ...(rData.errors || [])];
+      const totalPushed = (dData.results || []).length + (rData.results || []).length;
 
       resultEl.style.display = 'block';
-      if (data.ok) {
+      if (allErrors.length === 0) {
         resultEl.style.color = '#2d7a2d';
-        resultEl.textContent = '✓ Successfully pushed ' + data.results.length + ' entr' + (data.results.length === 1 ? 'y' : 'ies') + ' to QBO.';
+        resultEl.textContent = '✓ Successfully pushed ' + totalPushed + ' entr' + (totalPushed === 1 ? 'y' : 'ies') + ' to QBO.';
       } else {
         resultEl.style.color = '#c0392b';
-        resultEl.textContent = '✗ ' + data.errors.map(e => e.error).join(', ');
+        resultEl.textContent = '✗ ' + allErrors.map(e => e.error).join(', ');
       }
     } catch (e) {
       resultEl.style.display = 'block';
@@ -818,6 +826,7 @@
     document.getElementById('qboCard').style.display = 'none';
     document.getElementById('qboPushResult').style.display = 'none';
     qboSummaryData = null;
+    document.getElementById('pushAllBtn').disabled = false;
   }
 </script>
 </body>
