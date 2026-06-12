@@ -176,11 +176,9 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
         received_from = search_customer(token_data, realm_id, network_name) if network_name else None
         print(f"Deposit push - dep_num: {dep_num}, network: {network_name}, customer found: {received_from is not None}, lines: {len(lines)}")
 
-        doc_num = _short_doc_number(dep_num, network_name)
         payload = {
             "TxnDate": _parse_date(date),
             "PrivateNote": dep_num,
-            "DocNumber": doc_num,
             "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
             "Line": lines,
         }
