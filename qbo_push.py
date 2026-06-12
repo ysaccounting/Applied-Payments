@@ -132,6 +132,11 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
 
     for dep_num, rows in groups.items():
         date = rows[0]["date"]
+        network_name = rows[0].get("network", "")
+
+        # Look up the network as a customer (Received From)
+        received_from = search_customer(token_data, realm_id, network_name) if network_name else None
+
         lines = []
         for row in rows:
             acct = search_account(token_data, realm_id, row["account"])
@@ -139,9 +144,6 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
                 results.append({"status": "error", "deposit_num": dep_num,
                                  "error": f"Account not found in QBO: {row['account']}"})
                 continue
-            # Look up network as customer for Received From
-            network_name = row.get("network", "")
-            customer = search_customer(token_data, realm_id, network_name) if network_name else None
 
             deposit_detail = {
                 "AccountRef": {"value": acct["Id"], "name": acct["Name"]},
@@ -151,17 +153,14 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
                     "Type": "Customer",
                     "EntityRef": {"value": received_from["Id"], "name": received_from["DisplayName"]},
                 }
-            line = {
+            lines.append({
                 "Amount": row["amount"],
                 "Description": dep_num,
                 "DetailType": "DepositLineDetail",
                 "DepositLineDetail": deposit_detail,
-            }
-            lines.append(line)
+            })
 
-        print(f"Lines built: {len(lines)}, skipped due to missing accounts: {len(rows) - len(lines)}")
         if not lines:
-            print(f"No valid lines for {dep_num}, skipping deposit")
             continue
 
         bank_acct = search_account(token_data, realm_id, rows[0]["bank_account"])
@@ -170,20 +169,12 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
                              "error": f"Bank account not found in QBO: {rows[0]['bank_account']}"})
             continue
 
-        network_name = rows[0].get("network", "")
-
-        # Look up network as customer for Received From (header level)
-        received_from = search_customer(token_data, realm_id, network_name) if network_name else None
-        print(f"Deposit push - dep_num: {dep_num}, network: {network_name}, customer found: {received_from is not None}, lines: {len(lines)}")
-
         payload = {
             "TxnDate": _parse_date(date),
             "PrivateNote": dep_num,
             "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
             "Line": lines,
         }
-        # Note: QBO Deposit API does not support CustomerRef at header level
-        # Received From must be set per-line via EntityRef
         try:
             result = api_post(token_data, realm_id, "deposit?minorversion=65", payload)
             results.append({"status": "ok", "deposit_num": dep_num,
