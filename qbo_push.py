@@ -178,11 +178,8 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
             "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
             "Line": lines,
         }
-        if received_from:
-            payload["CustomerRef"] = {
-                "value": received_from["Id"],
-                "name": received_from["DisplayName"],
-            }
+        # Note: QBO Deposit API does not support CustomerRef at header level
+        # Received From must be set per-line via EntityRef
         try:
             result = api_post(token_data, realm_id, "deposit?minorversion=65", payload)
             results.append({"status": "ok", "deposit_num": dep_num,
