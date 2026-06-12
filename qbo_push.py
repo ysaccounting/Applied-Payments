@@ -150,8 +150,9 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
             }
             if received_from:
                 deposit_detail["Entity"] = {
-                    "Type": "Customer",
-                    "EntityRef": {"value": received_from["Id"], "name": received_from["DisplayName"]},
+                    "value": received_from["Id"],
+                    "name": received_from["DisplayName"],
+                    "type": "Customer",
                 }
             lines.append({
                 "Amount": row["amount"],
