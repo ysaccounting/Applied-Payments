@@ -346,9 +346,6 @@
 <div class="container">
 
   <div class="logo">
-    <div class="logo-mark">
-      <svg viewBox="0 0 20 20"><path d="M3 10h14M10 3l7 7-7 7"/></svg>
-    </div>
     <div>
       <div class="logo-text">Payments Applied Processor</div>
     </div>
@@ -700,7 +697,7 @@
       document.getElementById('qboCard').style.display = 'block';
       checkQBOStatus();
       // Show Receive Payment push button only for TE files
-      document.getElementById('pushReceiveBtn').style.display = data.has_receive_payment ? 'inline-flex' : 'none';
+      document.getElementById('pushReceiveBtn').style.display = 'inline-flex';
 
       btnText.textContent = 'Process file';
       btn.disabled = false;
