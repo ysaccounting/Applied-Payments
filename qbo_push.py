@@ -111,9 +111,10 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
                 },
             }
             if customer:
-                line["DepositLineDetail"]["Entity"] = {
-                    "EntityRef": {"value": customer["Id"], "name": customer["DisplayName"]},
-                    "Type": "Customer",
+                line["DepositLineDetail"]["EntityRef"] = {
+                    "value": customer["Id"],
+                    "name": customer["DisplayName"],
+                    "type": "Customer",
                 }
             lines.append(line)
 
