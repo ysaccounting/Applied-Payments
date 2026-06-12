@@ -2,10 +2,14 @@ import os
 import uuid
 import threading
 import time
-from flask import Flask, request, jsonify, send_file, render_template
+import secrets
+from flask import Flask, request, jsonify, send_file, render_template, redirect, session
 from processor import process
+from qbo_auth import get_auth_url, exchange_code, get_valid_token
+from qbo_push import push_bank_deposit, push_receive_payments, get_company_info
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
 
 # Use Railway Volume at /data if available, otherwise fall back to local folders
 DATA_DIR = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "/data")
@@ -97,6 +101,28 @@ def process_file():
     if os.path.exists(csv_path):
         os.remove(csv_path)
 
+    # Build summary data for QBO push
+    deposit_rows_data = []
+    bd_source = result.get("all_bd_rows_data", [])
+    for row in bd_source:
+        deposit_rows_data.append({
+            "account": row.get("Account", ""),
+            "amount": float(row.get("Amount", 0)),
+            "date": row.get("Date", ""),
+            "deposit_num": row.get("Deposit #", ""),
+            "bank_account": row.get("Bank Account", ""),
+        })
+
+    rp_rows_data = []
+    for row in result.get("rp_rows_data", []):
+        rp_rows_data.append({
+            "memo": row.get("Deposit #", ""),
+            "amount": float(row.get("Amount", 0)),
+            "date": row.get("Date", ""),
+            "deposit_num": row.get("Deposit #", ""),
+            "bank_account": result.get("bank_account", "FFB Chkg"),
+        })
+
     return jsonify({
         "session_id": session_id,
         "memo": memo,
@@ -105,6 +131,8 @@ def process_file():
         "receive_payment_amt": result["receive_payment_amt"],
         "bank_deposit_total": result["bank_deposit_total"],
         "combined_total": result["combined_total"],
+        "deposit_rows": deposit_rows_data,
+        "rp_rows": rp_rows_data,
     })
 
 
@@ -142,6 +170,110 @@ def reset(session_id):
             if os.path.exists(fpath):
                 os.remove(fpath)
     return jsonify({"ok": True})
+
+
+# ── QBO OAuth routes ─────────────────────────────────────────────────────────
+
+@app.route("/qbo/connect")
+def qbo_connect():
+    """Initiate QBO OAuth flow."""
+    state = secrets.token_urlsafe(16)
+    session["qbo_state"] = state
+    # Store session_id so we know which session to push after auth
+    session["pending_session_id"] = request.args.get("session_id", "")
+    session["push_type"] = request.args.get("push_type", "deposit")
+    return redirect(get_auth_url(state))
+
+
+@app.route("/qbo/callback")
+def qbo_callback():
+    """Handle QBO OAuth callback."""
+    code = request.args.get("code")
+    state = request.args.get("state")
+    realm_id = request.args.get("realmId")
+    error = request.args.get("error")
+
+    if error or not code:
+        return redirect("/?qbo_error=auth_failed")
+
+    if state != session.get("qbo_state"):
+        return redirect("/?qbo_error=invalid_state")
+
+    try:
+        from qbo_auth import exchange_code
+        token_data = exchange_code(code)
+        session["qbo_token"] = token_data
+        session["qbo_realm_id"] = realm_id
+        session["qbo_connected"] = True
+    except Exception as e:
+        return redirect(f"/?qbo_error={str(e)}")
+
+    return redirect("/?qbo_connected=1")
+
+
+@app.route("/qbo/status")
+def qbo_status():
+    """Check if QBO is connected for this session."""
+    connected = session.get("qbo_connected", False)
+    if connected:
+        try:
+            token_data = get_valid_token(session["qbo_token"])
+            session["qbo_token"] = token_data
+            info = get_company_info(token_data, session["qbo_realm_id"])
+            company = info.get("CompanyInfo", {}).get("CompanyName", "Connected")
+            return jsonify({"connected": True, "company": company})
+        except Exception:
+            session.pop("qbo_connected", None)
+            return jsonify({"connected": False})
+    return jsonify({"connected": False})
+
+
+@app.route("/qbo/disconnect", methods=["POST"])
+def qbo_disconnect():
+    """Disconnect QBO session."""
+    session.pop("qbo_token", None)
+    session.pop("qbo_realm_id", None)
+    session.pop("qbo_connected", None)
+    return jsonify({"ok": True})
+
+
+@app.route("/qbo/push/<session_id>/<push_type>", methods=["POST"])
+def qbo_push(session_id, push_type):
+    """Push entries to QBO."""
+    if not session.get("qbo_connected"):
+        return jsonify({"error": "Not authenticated with QBO", "auth_required": True}), 401
+
+    token_data = session.get("qbo_token")
+    realm_id = session.get("qbo_realm_id")
+
+    # Load the summary data from the processed session files
+    try:
+        token_data = get_valid_token(token_data)
+        session["qbo_token"] = token_data
+    except Exception as e:
+        session.pop("qbo_connected", None)
+        return jsonify({"error": "QBO token expired, please reconnect", "auth_required": True}), 401
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    try:
+        if push_type == "deposit":
+            results = push_bank_deposit(token_data, realm_id, data)
+        elif push_type == "receive":
+            results = push_receive_payments(token_data, realm_id, data)
+        else:
+            return jsonify({"error": "Invalid push type"}), 400
+
+        errors = [r for r in results if r.get("status") == "error"]
+        return jsonify({
+            "ok": len(errors) == 0,
+            "results": results,
+            "errors": errors,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

@@ -608,4 +608,13 @@ def process(csv_path, filename, evopay_path=None):
         "receive_payment_amt": receive_payment_amt,
         "bank_deposit_total": bank_deposit_total,
         "combined_total": combined_total,
+        "bank_account": bank_account,
+        "deposit_network_full": deposit_network_full,
+        # Raw data for QBO push
+        "all_bd_rows_data": (all_bd_rows if is_te else deposit_rows).to_dict("records"),
+        "rp_rows_data": rp_rows if is_te else [{
+            "Deposit #": memo,
+            "Amount": receive_payment_amt,
+            "Date": remit_date_str,
+        }],
     }
