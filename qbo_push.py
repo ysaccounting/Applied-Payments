@@ -153,7 +153,9 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
             }
             lines.append(line)
 
+        print(f"Lines built: {len(lines)}, skipped due to missing accounts: {len(rows) - len(lines)}")
         if not lines:
+            print(f"No valid lines for {dep_num}, skipping deposit")
             continue
 
         bank_acct = search_account(token_data, realm_id, rows[0]["bank_account"])
@@ -166,6 +168,7 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
 
         # Look up network as customer for Received From (header level)
         received_from = search_customer(token_data, realm_id, network_name) if network_name else None
+        print(f"Deposit push - dep_num: {dep_num}, network: {network_name}, customer found: {received_from is not None}, lines: {len(lines)}")
 
         doc_num = _short_doc_number(dep_num, network_name)
         payload = {

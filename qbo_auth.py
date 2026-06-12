@@ -92,5 +92,8 @@ def api_post(token_data: dict, realm_id: str, path: str, payload: dict) -> dict:
         },
         json=payload
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        print(f"QBO API error {resp.status_code}: {resp.text}")
+        print(f"Payload sent: {payload}")
+        resp.raise_for_status()
     return resp.json()
