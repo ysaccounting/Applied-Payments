@@ -487,7 +487,7 @@
   </div>
 
   <!-- QBO Push card -->
-  <div class="card" id="qboCard" style="display:none;">
+  <div class="card" id="qboCard">
     <div class="section-label">QuickBooks Online</div>
 
     <div id="qboDisconnected">
@@ -506,7 +506,7 @@
         </div>
         <button onclick="qboDisconnect()" style="font-size:12px;color:#999;background:none;border:none;cursor:pointer;">Disconnect</button>
       </div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <div id="pushButtonsSection" style="display:none; gap:10px; flex-wrap:wrap;">
         <button class="btn btn-primary" id="pushAllBtn" onclick="pushToQBO()">
           <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
           Push to QBO
@@ -675,7 +675,7 @@
         document.getElementById('receivePaymentDownload').style.display = 'flex';
       } else {
         document.getElementById('receivePaymentDownload').style.display = 'none';
-    document.getElementById('qboCard').style.display = 'none';
+    document.getElementById('pushButtonsSection').style.display = 'none';
     document.getElementById('qboPushResult').style.display = 'none';
     qboSummaryData = null;
     document.getElementById('pushAllBtn').disabled = false;
@@ -691,8 +691,8 @@
           rp_rows: data.rp_rows || [],
         }
       };
-      document.getElementById('qboCard').style.display = 'block';
       checkQBOStatus();
+      document.getElementById('pushButtonsSection').style.display = 'flex';
       // Show Receive Payment push button only for TE files
 
 
@@ -823,7 +823,7 @@
     document.getElementById('depositLink').href = '#';
     document.getElementById('receiveLink').href = '#';
     document.getElementById('receivePaymentDownload').style.display = 'none';
-    document.getElementById('qboCard').style.display = 'none';
+    document.getElementById('pushButtonsSection').style.display = 'none';
     document.getElementById('qboPushResult').style.display = 'none';
     qboSummaryData = null;
     document.getElementById('pushAllBtn').disabled = false;
