@@ -147,6 +147,7 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
 
             deposit_detail = {
                 "AccountRef": {"value": acct["Id"], "name": acct["Name"]},
+                "CheckNum": _short_doc_number(dep_num, network_name),
             }
             if received_from:
                 deposit_detail["Entity"] = {
