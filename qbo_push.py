@@ -163,6 +163,10 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
             continue
 
         network_name = rows[0].get("network", "")
+
+        # Look up network as customer for Received From (header level)
+        received_from = search_customer(token_data, realm_id, network_name) if network_name else None
+
         doc_num = _short_doc_number(dep_num, network_name)
         payload = {
             "TxnDate": _parse_date(date),
@@ -171,6 +175,11 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
             "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
             "Line": lines,
         }
+        if received_from:
+            payload["CustomerRef"] = {
+                "value": received_from["Id"],
+                "name": received_from["DisplayName"],
+            }
         try:
             result = api_post(token_data, realm_id, "deposit?minorversion=65", payload)
             results.append({"status": "ok", "deposit_num": dep_num,
