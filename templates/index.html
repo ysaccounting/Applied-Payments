@@ -398,6 +398,8 @@
       </div>
     </div>
 
+    <p style="font-size: 15px; font-weight: 700; color: #e00000; margin-top: 16px; letter-spacing: 0.3px;">MAKE SURE TO USE COLUMN S FOR REASON AND INPUT THE RELEVANT NOTES FOR CHARGEBACKS BEFORE UPLOADING HERE.</p>
+
     <div class="btn-row">
       <button class="btn btn-primary" id="processBtn" onclick="processFile()" disabled>
         <svg viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
@@ -484,6 +486,40 @@
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download
       </a>
+    </div>
+  </div>
+
+  <!-- QBO Push card -->
+  <div class="card" id="qboCard" style="display:none;">
+    <div class="section-label">QuickBooks Online</div>
+
+    <div id="qboDisconnected">
+      <p style="font-size: 13px; color: #666; margin-bottom: 16px;">Connect to QuickBooks to push entries directly.</p>
+      <button class="btn btn-primary" id="qboConnectBtn" onclick="qboConnect()">
+        <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Connect to QBO
+      </button>
+    </div>
+
+    <div id="qboConnected" style="display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;"></div>
+          <span style="font-size:13px; color:#1a1a1a;" id="qboCompanyName">Connected</span>
+        </div>
+        <button onclick="qboDisconnect()" style="font-size:12px;color:#999;background:none;border:none;cursor:pointer;">Disconnect</button>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn btn-primary" id="pushDepositBtn" onclick="pushToQBO('deposit')">
+          <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
+          Push Bank Deposit
+        </button>
+        <button class="btn btn-primary" id="pushReceiveBtn" onclick="pushToQBO('receive')" style="display:none;">
+          <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
+          Push Receive Payment
+        </button>
+      </div>
+      <div id="qboPushResult" style="margin-top:14px; font-size:13px; display:none;"></div>
     </div>
   </div>
 
@@ -646,8 +682,25 @@
         document.getElementById('receivePaymentDownload').style.display = 'flex';
       } else {
         document.getElementById('receivePaymentDownload').style.display = 'none';
+    document.getElementById('qboCard').style.display = 'none';
+    document.getElementById('qboPushResult').style.display = 'none';
+    qboSummaryData = null;
       }
       document.getElementById('downloadsCard').style.display = 'block';
+
+      // Show QBO card and store summary data for push
+      qboSummaryData = {
+        deposit: {
+          deposit_rows: data.deposit_rows || [],
+        },
+        receive: {
+          rp_rows: data.rp_rows || [],
+        }
+      };
+      document.getElementById('qboCard').style.display = 'block';
+      checkQBOStatus();
+      // Show Receive Payment push button only for TE files
+      document.getElementById('pushReceiveBtn').style.display = data.has_receive_payment ? 'inline-flex' : 'none';
 
       btnText.textContent = 'Process file';
       btn.disabled = false;
@@ -657,6 +710,82 @@
       btn.disabled = false;
       btnText.textContent = 'Process file';
     }
+  }
+
+  // ── QBO integration ─────────────────────────────────────────────────────────
+  let qboSummaryData = null;
+
+  async function checkQBOStatus() {
+    try {
+      const resp = await fetch('/qbo/status');
+      const data = await resp.json();
+      if (data.connected) {
+        document.getElementById('qboConnected').style.display = 'block';
+        document.getElementById('qboDisconnected').style.display = 'none';
+        document.getElementById('qboCompanyName').textContent = data.company;
+      } else {
+        document.getElementById('qboConnected').style.display = 'none';
+        document.getElementById('qboDisconnected').style.display = 'block';
+      }
+    } catch (e) {}
+  }
+
+  function qboConnect() {
+    window.location.href = '/qbo/connect?session_id=' + (sessionId || '');
+  }
+
+  async function qboDisconnect() {
+    await fetch('/qbo/disconnect', { method: 'POST' });
+    document.getElementById('qboConnected').style.display = 'none';
+    document.getElementById('qboDisconnected').style.display = 'block';
+  }
+
+  async function pushToQBO(pushType) {
+    if (!qboSummaryData || !sessionId) return;
+    const btn = pushType === 'deposit' ? document.getElementById('pushDepositBtn') : document.getElementById('pushReceiveBtn');
+    const origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner">⟳</span> Pushing…';
+
+    const resultEl = document.getElementById('qboPushResult');
+    resultEl.style.display = 'none';
+
+    try {
+      const resp = await fetch('/qbo/push/' + sessionId + '/' + pushType, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(qboSummaryData[pushType])
+      });
+      const data = await resp.json();
+
+      if (resp.status === 401 && data.auth_required) {
+        window.location.href = '/qbo/connect?session_id=' + sessionId;
+        return;
+      }
+
+      resultEl.style.display = 'block';
+      if (data.ok) {
+        resultEl.style.color = '#2d7a2d';
+        resultEl.textContent = '✓ Successfully pushed ' + data.results.length + ' entr' + (data.results.length === 1 ? 'y' : 'ies') + ' to QBO.';
+      } else {
+        resultEl.style.color = '#c0392b';
+        resultEl.textContent = '✗ ' + data.errors.map(e => e.error).join(', ');
+      }
+    } catch (e) {
+      resultEl.style.display = 'block';
+      resultEl.style.color = '#c0392b';
+      resultEl.textContent = '✗ Unexpected error. Please try again.';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origText;
+    }
+  }
+
+  // Check QBO status on page load and after OAuth redirect
+  checkQBOStatus();
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('qbo_connected')) {
+    history.replaceState({}, '', '/');
   }
 
   async function reset() {
@@ -689,6 +818,9 @@
     document.getElementById('depositLink').href = '#';
     document.getElementById('receiveLink').href = '#';
     document.getElementById('receivePaymentDownload').style.display = 'none';
+    document.getElementById('qboCard').style.display = 'none';
+    document.getElementById('qboPushResult').style.display = 'none';
+    qboSummaryData = null;
   }
 </script>
 </body>
