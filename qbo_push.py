@@ -98,13 +98,24 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
                 results.append({"status": "error", "deposit_num": dep_num,
                                  "error": f"Account not found in QBO: {row['account']}"})
                 continue
-            lines.append({
+            # Look up network as customer for Received From
+            network_name = row.get("network", "")
+            customer = search_customer(token_data, realm_id, network_name) if network_name else None
+
+            line = {
                 "Amount": row["amount"],
+                "Description": dep_num,
                 "DetailType": "DepositLineDetail",
                 "DepositLineDetail": {
                     "AccountRef": {"value": acct["Id"], "name": acct["Name"]},
                 },
-            })
+            }
+            if customer:
+                line["DepositLineDetail"]["Entity"] = {
+                    "EntityRef": {"value": customer["Id"], "name": customer["DisplayName"]},
+                    "Type": "Customer",
+                }
+            lines.append(line)
 
         if not lines:
             continue
@@ -118,6 +129,7 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
         payload = {
             "TxnDate": _parse_date(date),
             "PrivateNote": dep_num,
+            "DocNumber": dep_num,
             "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
             "Line": lines,
         }

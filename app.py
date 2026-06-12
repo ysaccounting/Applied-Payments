@@ -111,6 +111,7 @@ def process_file():
             "date": row.get("Date", ""),
             "deposit_num": row.get("Deposit #", ""),
             "bank_account": row.get("Bank Account", ""),
+            "network": row.get("Network", result.get("deposit_network_full", "")),
         })
 
     rp_rows_data = []
