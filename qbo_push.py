@@ -3,7 +3,28 @@ QBO push logic — Receive Payment and Bank Deposit entries.
 """
 from datetime import datetime
 from collections import defaultdict
-from qbo_auth import api_get, api_post, get_valid_token
+from qbo_auth import api_get, api_post, get_valid_token, QBOError
+
+
+def humanize_error(exc) -> str:
+    """Turn any push exception into a short message a non-technical user can act on."""
+    if isinstance(exc, QBOError):
+        m = (exc.message or "").lower()
+        if exc.status == 401 or "token" in m or "authenticationfailed" in m or "unauthorized" in m:
+            return "Your QuickBooks connection expired. Please reconnect and try again."
+        if "duplicate" in m and ("document" in m or "number" in m):
+            return "QuickBooks already has an entry with this reference number."
+        if "deposit account" in m or "deposittoaccount" in m:
+            return "The bank account on this entry isn't a valid deposit account in QuickBooks."
+        if "object not found" in m or "not found" in m:
+            return "QuickBooks couldn't find one of the accounts or names on this entry."
+        if "stale" in m or "out of date" in m:
+            return "This entry was changed in QuickBooks since it loaded. Refresh and try again."
+        # QBO's own validation messages are usually already readable
+        if exc.message:
+            return exc.message
+        return "QuickBooks rejected this entry."
+    return "Couldn't reach QuickBooks. Please try again."
 
 
 # Network short codes for QBO DocNumber (21 char limit)
@@ -90,14 +111,14 @@ def push_receive_payments(token_data: dict, realm_id: str, summary_data: dict) -
         customer = search_customer(token_data, realm_id, row["network"])
         if not customer:
             results.append({"status": "error", "memo": row["memo"],
-                             "error": f"Customer not found in QBO: {row['network']}"})
+                             "error": f"No customer named \"{row['network']}\" in QuickBooks."})
             continue
 
         # Look up deposit account (bank account)
         bank_acct = search_account(token_data, realm_id, row["bank_account"])
         if not bank_acct:
             results.append({"status": "error", "memo": row["memo"],
-                             "error": f"Bank account not found in QBO: {row['bank_account']}"})
+                             "error": f"No bank account named \"{row['bank_account']}\" in QuickBooks."})
             continue
 
         payload = {
@@ -113,7 +134,7 @@ def push_receive_payments(token_data: dict, realm_id: str, summary_data: dict) -
             results.append({"status": "ok", "memo": row["memo"],
                              "id": result.get("Payment", {}).get("Id")})
         except Exception as e:
-            results.append({"status": "error", "memo": row["memo"], "error": str(e)})
+            results.append({"status": "error", "memo": row["memo"], "error": humanize_error(e)})
 
     return results
 
@@ -142,7 +163,7 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
             acct = search_account(token_data, realm_id, row["account"])
             if not acct:
                 results.append({"status": "error", "deposit_num": dep_num,
-                                 "error": f"Account not found in QBO: {row['account']}"})
+                                 "error": f"No account named \"{row['account']}\" in QuickBooks."})
                 continue
 
             deposit_detail = {
@@ -168,7 +189,7 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
         bank_acct = search_account(token_data, realm_id, rows[0]["bank_account"])
         if not bank_acct:
             results.append({"status": "error", "deposit_num": dep_num,
-                             "error": f"Bank account not found in QBO: {rows[0]['bank_account']}"})
+                             "error": f"No bank account named \"{rows[0]['bank_account']}\" in QuickBooks."})
             continue
 
         payload = {
@@ -182,6 +203,6 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
             results.append({"status": "ok", "deposit_num": dep_num,
                              "id": result.get("Deposit", {}).get("Id")})
         except Exception as e:
-            results.append({"status": "error", "deposit_num": dep_num, "error": str(e)})
+            results.append({"status": "error", "deposit_num": dep_num, "error": humanize_error(e)})
 
     return results

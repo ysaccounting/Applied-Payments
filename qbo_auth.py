@@ -14,6 +14,33 @@ REVOKE_URL    = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke"
 API_BASE      = "https://quickbooks.api.intuit.com"
 
 
+class QBOError(Exception):
+    """A QuickBooks API error carrying a readable message from the QBO response."""
+    def __init__(self, message, detail="", code=None, status=None):
+        super().__init__(message)
+        self.message = message
+        self.detail = detail
+        self.code = code
+        self.status = status
+
+
+def _extract_qbo_error(resp):
+    """Pull a readable (message, detail, code) out of a QBO error response."""
+    try:
+        body = resp.json()
+    except Exception:
+        return (resp.text[:300].strip() or f"HTTP {resp.status_code}", "", None)
+    fault = body.get("Fault") or body.get("fault") or {}
+    errors = fault.get("Error") or fault.get("error") or []
+    if errors:
+        err = errors[0]
+        msg = (err.get("Message") or err.get("message") or "").strip()
+        detail = (err.get("Detail") or err.get("detail") or "").strip()
+        code = err.get("code") or err.get("Code")
+        return (msg or "QuickBooks rejected the request", detail, code)
+    return (resp.text[:300].strip() or f"HTTP {resp.status_code}", "", None)
+
+
 def get_auth_url(state: str) -> str:
     """Build the Intuit OAuth authorization URL."""
     params = (
@@ -77,7 +104,9 @@ def api_get(token_data: dict, realm_id: str, path: str) -> dict:
             "Accept": "application/json",
         }
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        msg, detail, code = _extract_qbo_error(resp)
+        raise QBOError(msg, detail=detail, code=code, status=resp.status_code)
     return resp.json()
 
 
@@ -95,5 +124,6 @@ def api_post(token_data: dict, realm_id: str, path: str, payload: dict) -> dict:
     if not resp.ok:
         print(f"QBO API error {resp.status_code}: {resp.text}")
         print(f"Payload sent: {payload}")
-        resp.raise_for_status()
+        msg, detail, code = _extract_qbo_error(resp)
+        raise QBOError(msg, detail=detail, code=code, status=resp.status_code)
     return resp.json()

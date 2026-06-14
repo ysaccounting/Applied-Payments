@@ -275,7 +275,9 @@ def qbo_push(session_id, push_type):
             "errors": errors,
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        from qbo_push import humanize_error
+        msg = humanize_error(e)
+        return jsonify({"ok": False, "results": [], "errors": [{"error": msg}], "error": msg}), 500
 
 
 if __name__ == "__main__":
