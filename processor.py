@@ -146,8 +146,10 @@ def parse_filename(filename):
     # Network is everything between the prefix (first part) and the date
     if date_idx >= 2:
         network_raw = "_".join(p for p in parts[1:date_idx] if p)
+        prefix = parts[0]  # YS, YS2, TV, etc
     else:
         network_raw = parts[0]
+        prefix = ""
 
     # Normalize key for lookups (lowercase, strip parens/spaces)
     network_key = network_raw.lower().replace("(", "").replace(")", "").replace(" ", "")
@@ -176,7 +178,7 @@ def parse_filename(filename):
     }
     bank_account = bank_account_map.get(network_key, "FFB Chkg")
 
-    return network_display, remit_date, deposit_network, bank_account
+    return network_display, remit_date, deposit_network, bank_account, prefix
 
 
 def _parse_event_date(val):
@@ -343,17 +345,58 @@ def style_data_tab(ws, df):
     ws.auto_filter.ref = f"A1:{get_column_letter(len(DATA_COLS))}1"
 
 
+# Network short codes for Deposit # (QBO 21-char limit)
+NETWORK_SHORT_CODES = {
+    "stubhub": "SH",
+    "vivid seats": "VS",
+    "ticket evolution": "TEVO",
+    "ticketsnow": "TNOW",
+    "gotickets": "GOTIX",
+    "seatgeek": "SG",
+    "gametime": "GT",
+    "ticketnetwork": "TND",
+    "mercury": "MERC",
+}
+
+
+def build_deposit_number(network_display, prefix, remit_date):
+    """Build the short deposit number.
+    Format: <SHORT>_<CAD?>_<PREFIX>_<MM-DD-YY>
+    e.g. VS_YS2_06-12-26 or VS_CAD_YS2_06-12-26
+    """
+    import re as _re
+    date_str = remit_date.strftime("%m-%d-%y")
+
+    # Detect CAD
+    is_cad = "(cad)" in network_display.lower() or " cad" in network_display.lower()
+
+    # Clean network name for lookup — strip (CAD), (C), etc
+    net_clean = _re.sub(r"\s*\(.*?\)", "", network_display).strip().lower()
+    short = NETWORK_SHORT_CODES.get(net_clean, "")
+    if not short:
+        short = _re.sub(r"[^A-Z0-9]", "", network_display.upper())[:4]
+
+    parts = [short]
+    if is_cad:
+        parts.append("CAD")
+    parts.append(prefix)
+    parts.append(date_str)
+    return "_".join(parts)
+
+
 def process(csv_path, filename, evopay_path=None):
     raw = pd.read_csv(csv_path, usecols=range(19), engine="python", on_bad_lines="skip")
     raw.columns = raw.columns.str.strip()  # remove leading/trailing spaces from column names
     # Validate that column S (Reason) is present
     if "Reason" not in raw.columns:
         raise ValueError("Column S (Reason) is missing from this file. Please add the Reason column before uploading.")
-    network_display, remit_date, deposit_network, bank_account = parse_filename(filename)
+    network_display, remit_date, deposit_network, bank_account, prefix = parse_filename(filename)
     remit_date_str = remit_date.strftime("%m/%d/%Y")
     network = network_display  # no (C) on detail tabs
     deposit_network_full = f"{deposit_network} (C)"  # (C) only on bank deposit
     memo = os.path.splitext(filename)[0]
+    # Short deposit number for QBO and output files
+    short_dep_num = build_deposit_number(network_display, prefix, remit_date)
 
     # Build EvoPay order->date lookup if provided
     evopay_dates = {}
@@ -403,7 +446,7 @@ def process(csv_path, filename, evopay_path=None):
     deposit_rows["Amount"] = deposit_rows["Amount"].round(2)
     deposit_rows["Network"] = deposit_network_full
     deposit_rows["Date"] = remit_date_str
-    deposit_rows["Deposit #"] = memo
+    deposit_rows["Deposit #"] = short_dep_num
     deposit_rows["Bank Account"] = bank_account
 
     bank_deposit_total = round(deposit_rows["Amount"].sum(), 2)
@@ -440,13 +483,15 @@ def process(csv_path, filename, evopay_path=None):
             amt = round(pay + rec, 2)
             if amt == 0:
                 continue
-            dep_num = f"{fn_prefix}_{_date_to_filename_fmt(d)}"
+            d_date = pd.to_datetime(d)
+            dep_num = build_deposit_number(network_display, prefix, d_date)
             rp_rows.append({"Date": d, "Amount": amt, "Deposit #": dep_num})
 
         # Per-date Bank Deposit rows
         bd_rows_by_date = []
         for d in all_dates:
-            dep_num = f"{fn_prefix}_{_date_to_filename_fmt(d)}"
+            d_date = pd.to_datetime(d)
+            dep_num = build_deposit_number(network_display, prefix, d_date)
             # Affiliates
             aff_d = affiliates_df[affiliates_df["Date"] == d].groupby("Company")["Amount"].sum().reset_index()
             aff_d.columns = ["Account", "Amount"]
@@ -525,11 +570,11 @@ def process(csv_path, filename, evopay_path=None):
     else:
         ws_sum.cell(row=1, column=1, value="Receive Payment").font = SECTION_FONT
         write_header_row(ws_sum, 2, SUM_COLS)
-        write_data_cell(ws_sum, 3, 1, memo)
+        write_data_cell(ws_sum, 3, 1, short_dep_num)
         write_data_cell(ws_sum, 3, 2, receive_payment_amt, fmt="#,##0.00", align=ALIGN_CENTER)
         write_data_cell(ws_sum, 3, 3, deposit_network_full, align=ALIGN_CENTER)
         write_data_cell(ws_sum, 3, 4, remit_date_str, align=ALIGN_CENTER)
-        write_data_cell(ws_sum, 3, 5, memo)
+        write_data_cell(ws_sum, 3, 5, short_dep_num)
         write_data_cell(ws_sum, 3, 6, bank_account, align=ALIGN_CENTER)
         ws_sum.cell(row=5, column=1, value="Bank Deposit").font = SECTION_FONT
         write_header_row(ws_sum, 6, BD_COLS)
@@ -613,7 +658,7 @@ def process(csv_path, filename, evopay_path=None):
         # Raw data for QBO push
         "all_bd_rows_data": (all_bd_rows if is_te else deposit_rows).to_dict("records"),
         "rp_rows_data": rp_rows if is_te else [{
-            "Deposit #": memo,
+            "Deposit #": short_dep_num,
             "Amount": receive_payment_amt,
             "Date": remit_date_str,
         }],

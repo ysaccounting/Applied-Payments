@@ -105,7 +105,7 @@ def push_receive_payments(token_data: dict, realm_id: str, summary_data: dict) -
             "TotalAmt": row["amount"],
             "TxnDate": _parse_date(row["date"]),
             "PrivateNote": row["memo"],
-            "PaymentRefNum": _short_doc_number(row["deposit_num"], row.get("network", "")),
+            "PaymentRefNum": row["deposit_num"],
             "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
         }
         try:
@@ -147,7 +147,7 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
 
             deposit_detail = {
                 "AccountRef": {"value": acct["Id"], "name": acct["Name"]},
-                "CheckNum": _short_doc_number(dep_num, network_name),
+                "CheckNum": dep_num,
             }
             if received_from:
                 deposit_detail["Entity"] = {
