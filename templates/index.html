@@ -337,6 +337,28 @@
     .btn-download:hover { background: #2d4720; }
     .btn-download svg { width: 13px; height: 13px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
+    /* QBO push buttons */
+    .push-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .push-row .btn { min-width: 230px; justify-content: center; }
+
+    .btn-done {
+      background: #eaf1e6;
+      color: #375623;
+      border: 1px solid #cfe0c4;
+      cursor: default;
+      opacity: 1;
+    }
+
+    .push-status { font-size: 12px; line-height: 1.4; }
+    .push-status.ok  { color: #2d7a2d; }
+    .push-status.err { color: #c0392b; }
+
     /* Spinner */
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner { animation: spin 0.8s linear infinite; display: inline-block; }
@@ -506,13 +528,22 @@
         </div>
         <button onclick="qboDisconnect()" style="font-size:12px;color:#999;background:none;border:none;cursor:pointer;">Disconnect</button>
       </div>
-      <div id="pushButtonsSection" style="display:none; gap:10px; flex-wrap:wrap;">
-        <button class="btn btn-primary" id="pushAllBtn" onclick="pushToQBO()">
-          <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
-          Push to QBO
-        </button>
+      <div id="pushButtonsSection" style="display:none; flex-direction:column; gap:14px;">
+        <div class="push-row">
+          <button class="btn btn-primary" id="pushDepositBtn" onclick="pushEntry('deposit')">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
+            Push Bank Deposit to QBO
+          </button>
+          <span class="push-status" id="depositStatus"></span>
+        </div>
+        <div class="push-row">
+          <button class="btn btn-primary" id="pushReceiveBtn" onclick="pushEntry('receive')">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
+            Push Receive Payment to QBO
+          </button>
+          <span class="push-status" id="receiveStatus"></span>
+        </div>
       </div>
-      <div id="qboPushResult" style="margin-top:14px; font-size:13px; display:none;"></div>
     </div>
   </div>
 
@@ -523,6 +554,9 @@
   let evoPayFile = null;
   let sessionId = null;
   let combinedTotal = null;
+
+  const PUSH_ICON = '<svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>';
+  const PUSH_LABELS = { deposit: 'Push Bank Deposit to QBO', receive: 'Push Receive Payment to QBO' };
 
   function fmt(n) {
     return '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -675,25 +709,17 @@
         document.getElementById('receivePaymentDownload').style.display = 'flex';
       } else {
         document.getElementById('receivePaymentDownload').style.display = 'none';
-    document.getElementById('pushButtonsSection').style.display = 'none';
-    document.getElementById('qboPushResult').style.display = 'none';
-    qboSummaryData = null;
-    document.getElementById('pushAllBtn').disabled = false;
       }
       document.getElementById('downloadsCard').style.display = 'block';
 
-      // Show QBO card and store summary data for push
+      // Store summary data for push and reset the push buttons to a fresh state
       qboSummaryData = {
-        deposit: {
-          deposit_rows: data.deposit_rows || [],
-        },
-        receive: {
-          rp_rows: data.rp_rows || [],
-        }
+        deposit: { deposit_rows: data.deposit_rows || [] },
+        receive: { rp_rows: data.rp_rows || [] }
       };
       checkQBOStatus();
       document.getElementById('pushButtonsSection').style.display = 'flex';
-      // Show Receive Payment push button only for TE files
+      resetPushButtons();
 
 
       btnText.textContent = 'Process file';
@@ -734,55 +760,78 @@
     document.getElementById('qboDisconnected').style.display = 'block';
   }
 
-  async function pushToQBO() {
+  function resetPushButtons() {
+    const map = { deposit: 'pushDepositBtn', receive: 'pushReceiveBtn' };
+    const statusMap = { deposit: 'depositStatus', receive: 'receiveStatus' };
+    const hasRows = {
+      deposit: !!(qboSummaryData && (qboSummaryData.deposit.deposit_rows || []).length),
+      receive: !!(qboSummaryData && (qboSummaryData.receive.rp_rows || []).length),
+    };
+    ['deposit', 'receive'].forEach(type => {
+      const btn = document.getElementById(map[type]);
+      btn.className = 'btn btn-primary';
+      btn.innerHTML = PUSH_ICON + PUSH_LABELS[type];
+      btn.disabled = !hasRows[type];
+      const st = document.getElementById(statusMap[type]);
+      st.className = 'push-status';
+      st.textContent = hasRows[type] ? '' : 'No entries to push.';
+    });
+  }
+
+  async function pushEntry(type) {
     if (!qboSummaryData || !sessionId) return;
-    const btn = document.getElementById('pushAllBtn');
-    const origText = btn.innerHTML;
+
+    const cfg = {
+      deposit: { btn: 'pushDepositBtn', status: 'depositStatus', label: 'Bank Deposit', payload: qboSummaryData.deposit },
+      receive: { btn: 'pushReceiveBtn', status: 'receiveStatus', label: 'Receive Payment', payload: qboSummaryData.receive },
+    }[type];
+
+    const btn = document.getElementById(cfg.btn);
+    const statusEl = document.getElementById(cfg.status);
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner">⟳</span> Pushing…';
-
-    const resultEl = document.getElementById('qboPushResult');
-    resultEl.style.display = 'none';
+    statusEl.className = 'push-status';
+    statusEl.textContent = '';
 
     try {
-      // Push Bank Deposit
-      const dResp = await fetch('/qbo/push/' + sessionId + '/deposit', {
+      const resp = await fetch('/qbo/push/' + sessionId + '/' + type, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(qboSummaryData.deposit)
+        body: JSON.stringify(cfg.payload)
       });
-      if (dResp.status === 401) {
-        window.location.href = '/qbo/connect?session_id=' + sessionId;
+
+      if (resp.status === 401) {
+        statusEl.className = 'push-status err';
+        statusEl.textContent = 'QuickBooks isn’t connected. Connect above, then try again.';
+        btn.disabled = false;
+        btn.innerHTML = PUSH_ICON + PUSH_LABELS[type];
         return;
       }
-      const dData = await dResp.json();
 
-      // Push Receive Payment
-      const rResp = await fetch('/qbo/push/' + sessionId + '/receive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(qboSummaryData.receive)
-      });
-      const rData = await rResp.json();
+      const data = await resp.json();
+      const errors = data.errors || [];
 
-      const allErrors = [...(dData.errors || []), ...(rData.errors || [])];
-      const totalPushed = (dData.results || []).length + (rData.results || []).length;
-
-      resultEl.style.display = 'block';
-      if (allErrors.length === 0) {
-        resultEl.style.color = '#2d7a2d';
-        resultEl.textContent = '✓ Successfully pushed ' + totalPushed + ' entr' + (totalPushed === 1 ? 'y' : 'ies') + ' to QBO.';
+      if (resp.ok && data.ok && errors.length === 0) {
+        // Success — lock the button so the same entry can't be sent twice
+        const n = (data.results || []).length;
+        btn.className = 'btn btn-done';
+        btn.innerHTML = '✓ ' + cfg.label + ' pushed';
+        btn.disabled = true;
+        statusEl.className = 'push-status ok';
+        statusEl.textContent = 'Sent ' + n + ' entr' + (n === 1 ? 'y' : 'ies') + ' to QuickBooks.';
       } else {
-        resultEl.style.color = '#c0392b';
-        resultEl.textContent = '✗ ' + allErrors.map(e => e.error).join(', ');
+        // Failed — leave the button active so it can be retried
+        const msgs = errors.length ? errors.map(e => e.error) : [data.error || 'Something went wrong.'];
+        statusEl.className = 'push-status err';
+        statusEl.textContent = msgs.join(' · ');
+        btn.disabled = false;
+        btn.innerHTML = PUSH_ICON + PUSH_LABELS[type];
       }
     } catch (e) {
-      resultEl.style.display = 'block';
-      resultEl.style.color = '#c0392b';
-      resultEl.textContent = '✗ Unexpected error. Please try again.';
-    } finally {
+      statusEl.className = 'push-status err';
+      statusEl.textContent = 'Couldn’t reach the server. Please try again.';
       btn.disabled = false;
-      btn.innerHTML = origText;
+      btn.innerHTML = PUSH_ICON + PUSH_LABELS[type];
     }
   }
 
@@ -824,9 +873,8 @@
     document.getElementById('receiveLink').href = '#';
     document.getElementById('receivePaymentDownload').style.display = 'none';
     document.getElementById('pushButtonsSection').style.display = 'none';
-    document.getElementById('qboPushResult').style.display = 'none';
     qboSummaryData = null;
-    document.getElementById('pushAllBtn').disabled = false;
+    resetPushButtons();
   }
 </script>
 </body>
