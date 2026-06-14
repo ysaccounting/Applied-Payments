@@ -734,11 +734,13 @@
 
   // ── QBO integration ─────────────────────────────────────────────────────────
   let qboSummaryData = null;
+  let qboAdminGate = false;
 
   async function checkQBOStatus() {
     try {
       const resp = await fetch('/qbo/status');
       const data = await resp.json();
+      qboAdminGate = !!data.admin_gate;
       if (data.connected) {
         document.getElementById('qboConnected').style.display = 'block';
         document.getElementById('qboDisconnected').style.display = 'none';
@@ -751,11 +753,32 @@
   }
 
   function qboConnect() {
-    window.location.href = '/qbo/connect?session_id=' + (sessionId || '');
+    let url = '/qbo/connect?session_id=' + (sessionId || '');
+    if (qboAdminGate) {
+      const key = prompt('Enter the admin password to connect QuickBooks:');
+      if (key === null) return;            // cancelled
+      url += '&admin_key=' + encodeURIComponent(key);
+    }
+    window.location.href = url;
   }
 
   async function qboDisconnect() {
-    await fetch('/qbo/disconnect', { method: 'POST' });
+    const body = {};
+    if (qboAdminGate) {
+      const key = prompt('Enter the admin password to disconnect QuickBooks:');
+      if (key === null) return;            // cancelled
+      body.admin_key = key;
+    }
+    const resp = await fetch('/qbo/disconnect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!data.ok) {
+      alert(data.error || 'Could not disconnect.');
+      return;
+    }
     document.getElementById('qboConnected').style.display = 'none';
     document.getElementById('qboDisconnected').style.display = 'block';
   }
@@ -839,6 +862,13 @@
   checkQBOStatus();
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('qbo_connected')) {
+    history.replaceState({}, '', '/');
+  }
+  const qboErr = urlParams.get('qbo_error');
+  if (qboErr) {
+    if (qboErr === 'admin_required') {
+      alert('Incorrect or missing admin password — QuickBooks was not connected.');
+    }
     history.replaceState({}, '', '/');
   }
 

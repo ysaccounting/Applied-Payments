@@ -3,13 +3,51 @@ import uuid
 import threading
 import time
 import secrets
-from flask import Flask, request, jsonify, send_file, render_template, redirect, session
+import hmac
+from flask import Flask, request, jsonify, send_file, render_template, redirect, session, Response
 from processor import process
 from qbo_auth import get_auth_url, exchange_code, get_valid_token
 from qbo_push import push_bank_deposit, push_receive_payments, get_company_info
+import token_store
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
+
+# ── Access control (configured via Railway environment variables) ─────────────
+# APP_PASSWORD set        -> whole app requires Basic Auth (username defaults to "team")
+# QBO_ADMIN_PASSWORD set  -> connecting/disconnecting QBO requires the admin password
+# If a value is unset, that gate is simply off, so nothing breaks before you set them.
+APP_USERNAME = os.environ.get("APP_USERNAME", "team")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+QBO_ADMIN_PASSWORD = os.environ.get("QBO_ADMIN_PASSWORD", "")
+
+
+def _ct_eq(a, b):
+    """Constant-time string compare."""
+    return hmac.compare_digest(str(a), str(b))
+
+
+def _admin_ok(provided):
+    """True if the admin gate is off, or the supplied password matches."""
+    if not QBO_ADMIN_PASSWORD:
+        return True
+    return bool(provided) and _ct_eq(provided, QBO_ADMIN_PASSWORD)
+
+
+@app.before_request
+def _require_app_login():
+    """App-wide Basic Auth. Off until APP_PASSWORD is set in Railway."""
+    if not APP_PASSWORD:
+        return
+    # Intuit redirects here after OAuth and can't send Basic Auth; it's protected
+    # instead by the OAuth state/code, so exempt just this path.
+    if request.path == "/qbo/callback":
+        return
+    auth = request.authorization
+    if auth and _ct_eq(auth.username, APP_USERNAME) and _ct_eq(auth.password, APP_PASSWORD):
+        return
+    return Response("Authentication required.", 401,
+                    {"WWW-Authenticate": 'Basic realm="Applied Payments"'})
 
 # Use Railway Volume at /data if available, otherwise fall back to local folders
 DATA_DIR = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "/data")
@@ -180,6 +218,8 @@ def reset(session_id):
 def qbo_connect():
     """Initiate QBO OAuth flow."""
     state = secrets.token_urlsafe(16)
+    if not _admin_ok(request.args.get("admin_key", "")):
+        return redirect("/?qbo_error=admin_required")
     session["qbo_state"] = state
     # Store session_id so we know which session to push after auth
     session["pending_session_id"] = request.args.get("session_id", "")
@@ -204,9 +244,8 @@ def qbo_callback():
     try:
         from qbo_auth import exchange_code
         token_data = exchange_code(code)
-        session["qbo_token"] = token_data
-        session["qbo_realm_id"] = realm_id
-        session["qbo_connected"] = True
+        # Persist as the single shared connection for ALL users (admin connects once).
+        token_store.save_connection(token_data, realm_id)
     except Exception as e:
         return redirect(f"/?qbo_error={str(e)}")
 
@@ -215,46 +254,40 @@ def qbo_callback():
 
 @app.route("/qbo/status")
 def qbo_status():
-    """Check if QBO is connected for this session."""
-    connected = session.get("qbo_connected", False)
-    if connected:
-        try:
-            token_data = get_valid_token(session["qbo_token"])
-            session["qbo_token"] = token_data
-            info = get_company_info(token_data, session["qbo_realm_id"])
-            company = info.get("CompanyInfo", {}).get("CompanyName", "Connected")
-            return jsonify({"connected": True, "company": company})
-        except Exception:
-            session.pop("qbo_connected", None)
-            return jsonify({"connected": False})
-    return jsonify({"connected": False})
+    """Check if the shared QBO connection is live (same for every user)."""
+    token_data, realm_id = token_store.get_active_connection()
+    if not token_data:
+        return jsonify({"connected": False, "admin_gate": bool(QBO_ADMIN_PASSWORD)})
+    try:
+        info = get_company_info(token_data, realm_id)
+        company = info.get("CompanyInfo", {}).get("CompanyName", "Connected")
+        return jsonify({"connected": True, "company": company, "admin_gate": bool(QBO_ADMIN_PASSWORD)})
+    except Exception:
+        return jsonify({"connected": False, "admin_gate": bool(QBO_ADMIN_PASSWORD)})
 
 
 @app.route("/qbo/disconnect", methods=["POST"])
 def qbo_disconnect():
-    """Disconnect QBO session."""
-    session.pop("qbo_token", None)
-    session.pop("qbo_realm_id", None)
-    session.pop("qbo_connected", None)
+    """Disconnect QBO. Clears the SHARED connection for every user — admin only."""
+    data = request.get_json(silent=True) or {}
+    provided = data.get("admin_key", "") or request.headers.get("X-Admin-Key", "")
+    if not _admin_ok(provided):
+        return jsonify({"ok": False, "error": "Admin password required to disconnect."}), 403
+    token_store.clear_connection()
     return jsonify({"ok": True})
 
 
 @app.route("/qbo/push/<session_id>/<push_type>", methods=["POST"])
 def qbo_push(session_id, push_type):
-    """Push entries to QBO."""
-    if not session.get("qbo_connected"):
-        return jsonify({"error": "Not authenticated with QBO", "auth_required": True}), 401
-
-    token_data = session.get("qbo_token")
-    realm_id = session.get("qbo_realm_id")
-
-    # Load the summary data from the processed session files
+    """Push entries to QBO using the shared company connection."""
     try:
-        token_data = get_valid_token(token_data)
-        session["qbo_token"] = token_data
-    except Exception as e:
-        session.pop("qbo_connected", None)
-        return jsonify({"error": "QBO token expired, please reconnect", "auth_required": True}), 401
+        token_data, realm_id = token_store.get_active_connection()
+    except Exception:
+        token_data, realm_id = None, None
+
+    if not token_data:
+        return jsonify({"error": "QuickBooks isn't connected. Connect it first, then try again.",
+                        "auth_required": True}), 401
 
     data = request.get_json()
     if not data:

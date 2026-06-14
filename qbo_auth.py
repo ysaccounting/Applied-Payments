@@ -3,15 +3,27 @@ import time
 import base64
 import requests
 
-# ── QBO OAuth 2.0 config ──────────────────────────────────────────────────────
-CLIENT_ID     = os.environ.get("QBO_CLIENT_ID", "ABB2nisdNCJzxAcF8dba5q6NHMT3A3P0EF1ENEh8bV69y2177M")
-CLIENT_SECRET = os.environ.get("QBO_CLIENT_SECRET", "G2TKvK5WxSPIsjiTtZ7ogVpg9PmvJD9odjLSWAmg")
-REDIRECT_URI  = "https://applied-payments-production.up.railway.app/qbo/callback"
+# ── QBO OAuth 2.0 config (all from environment — no secrets in source) ─────────
+CLIENT_ID     = os.environ.get("QBO_CLIENT_ID", "")
+CLIENT_SECRET = os.environ.get("QBO_CLIENT_SECRET", "")
+REDIRECT_URI  = os.environ.get(
+    "QBO_REDIRECT_URI",
+    "https://applied-payments-production.up.railway.app/qbo/callback",
+)
 SCOPE         = "com.intuit.quickbooks.accounting"
 AUTH_URL      = "https://appcenter.intuit.com/connect/oauth2"
 TOKEN_URL     = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer"
 REVOKE_URL    = "https://developer.api.intuit.com/v2/oauth2/tokens/revoke"
 API_BASE      = "https://quickbooks.api.intuit.com"
+
+
+def _require_credentials():
+    """Fail clearly if the QBO app credentials haven't been configured."""
+    if not CLIENT_ID or not CLIENT_SECRET:
+        raise ValueError(
+            "QuickBooks credentials are not set. Define the QBO_CLIENT_ID and "
+            "QBO_CLIENT_SECRET environment variables before connecting QuickBooks."
+        )
 
 
 class QBOError(Exception):
@@ -43,6 +55,7 @@ def _extract_qbo_error(resp):
 
 def get_auth_url(state: str) -> str:
     """Build the Intuit OAuth authorization URL."""
+    _require_credentials()
     params = (
         f"?client_id={CLIENT_ID}"
         f"&response_type=code"
@@ -55,6 +68,7 @@ def get_auth_url(state: str) -> str:
 
 def exchange_code(code: str) -> dict:
     """Exchange authorization code for tokens."""
+    _require_credentials()
     creds = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
     resp = requests.post(TOKEN_URL, headers={
         "Authorization": f"Basic {creds}",
@@ -73,6 +87,7 @@ def exchange_code(code: str) -> dict:
 
 def refresh_token(token_data: dict) -> dict:
     """Refresh an expired access token."""
+    _require_credentials()
     creds = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
     resp = requests.post(TOKEN_URL, headers={
         "Authorization": f"Basic {creds}",
