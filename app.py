@@ -4,11 +4,13 @@ import threading
 import time
 import secrets
 import hmac
+import json
 from flask import Flask, request, jsonify, send_file, render_template, redirect, session, Response
 from processor import process
 from qbo_auth import get_auth_url, exchange_code, get_valid_token
 from qbo_push import push_bank_deposit, push_receive_payments, get_company_info
 import token_store
+import gsheets
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
@@ -127,6 +129,11 @@ def process_file():
 
     result["wb_applied"].save(applied_path)
     result["wb_deposit"].save(deposit_path)
+
+    # Save the detail-tab rows for the Google Sheets append (read back by session_id).
+    detail_path = os.path.join(OUTPUT_FOLDER, f"{session_id}__detail__.json")
+    with open(detail_path, "w") as df:
+        json.dump(result.get("detail_rows_data", []), df)
 
     # Save Receive Payment file for TE
     receive_path = None
@@ -311,6 +318,32 @@ def qbo_push(session_id, push_type):
         from qbo_push import humanize_error
         msg = humanize_error(e)
         return jsonify({"ok": False, "results": [], "errors": [{"error": msg}], "error": msg}), 500
+
+
+@app.route("/gsheets/status")
+def gsheets_status():
+    """Tell the UI whether the Google Sheet output is configured."""
+    return jsonify({"configured": gsheets.is_configured()})
+
+
+@app.route("/gsheets/push/<session_id>", methods=["POST"])
+def gsheets_push(session_id):
+    """Append the processed detail-tab rows into the master sheet's monthly tabs."""
+    detail_path = os.path.join(OUTPUT_FOLDER, f"{session_id}__detail__.json")
+    if not os.path.exists(detail_path):
+        return jsonify({"ok": False, "error": "Please re-process the file, then try again."}), 400
+    try:
+        with open(detail_path) as f:
+            detail_rows = json.load(f)
+    except Exception:
+        return jsonify({"ok": False, "error": "Couldn't read the processed data — please re-process."}), 400
+    if not detail_rows:
+        return jsonify({"ok": False, "error": "No rows to add."}), 400
+    try:
+        result = gsheets.append_detail(detail_rows)
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        return jsonify({"ok": False, "error": gsheets.humanize_sheets_error(e)}), 500
 
 
 if __name__ == "__main__":
