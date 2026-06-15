@@ -263,7 +263,7 @@ def _resolve_shifted_cols(r):
         }
 
 
-def build_row(r, remit_date_str, network, evopay_dates=None):
+def build_row(r, remit_date_str, network, evopay_sale=None, evopay_cancel=None):
     company_raw = str(r["Company"]).strip() if pd.notna(r["Company"]) else ""
     is_fee = company_raw.endswith("-Fee")
     is_cancellation = company_raw == "Cancellation Fees"
@@ -284,9 +284,18 @@ def build_row(r, remit_date_str, network, evopay_dates=None):
 
     category = COMPANY_MAPPING_LOWER.get(company_raw.lower(), "Unknown")
 
+    order_key = str(r["Order#"]).strip()
+    sale_date = evopay_sale.get(order_key) if evopay_sale else None
+    cancel_date = evopay_cancel.get(order_key) if evopay_cancel else None
+    if amount < 0:
+        # Canceled order: use the cancellation (Debit transfer) date, not the original sale.
+        row_date = cancel_date or sale_date or remit_date_str
+    else:
+        row_date = sale_date or cancel_date or remit_date_str
+
     return {
         "Company": company_out,
-        "Date": (evopay_dates.get(str(r["Order#"]).strip(), remit_date_str) if evopay_dates else remit_date_str),
+        "Date": row_date,
         "Network": network,
         "Type": type_val,
         "Order#": str(int(r["Order#"])) if pd.notna(r["Order#"]) and str(r["Order#"]).isdigit() else (str(r["Order#"]) if pd.notna(r["Order#"]) else ""),
@@ -398,8 +407,19 @@ def process(csv_path, filename, evopay_path=None):
     # Short deposit number for QBO and output files
     short_dep_num = build_deposit_number(network_display, prefix, remit_date)
 
-    # Build EvoPay order->date lookup if provided
-    evopay_dates = {}
+    # Build EvoPay order->date lookups if provided.
+    # An order can have TWO transfer rows: the original sale (a Credit) and,
+    # if it was later canceled, the cancellation (a Debit). We keep them apart so
+    # a negative (canceled) TE row can use the cancellation date, not the sale date.
+    def _money(v):
+        try:
+            s = str(v).replace("$", "").replace(",", "").replace("(", "-").replace(")", "").strip()
+            return float(s) if s else 0.0
+        except Exception:
+            return 0.0
+
+    evopay_sale = {}     # order -> latest Credit-transfer date (original sale)
+    evopay_cancel = {}   # order -> latest Debit-transfer date (cancellation)
     if evopay_path:
         try:
             if evopay_path.endswith('.csv'):
@@ -408,18 +428,26 @@ def process(csv_path, filename, evopay_path=None):
                 ep = pd.read_excel(evopay_path)
             ep.columns = ep.columns.str.strip()
             ep_transfers = ep[ep['Type'].astype(str).str.strip().str.lower() == 'transfer'].copy()
+            _sale_dt, _cancel_dt = {}, {}
             for _, row in ep_transfers.iterrows():
                 order = str(row['Order - PO #']).strip()
-                try:
-                    dt = pd.to_datetime(str(row['Date Created']), errors='coerce')
-                    if not pd.isna(dt):
-                        evopay_dates[order] = dt.strftime('%m/%d/%Y')
-                except Exception:
-                    pass
+                dt = pd.to_datetime(str(row['Date Created']), errors='coerce')
+                if pd.isna(dt):
+                    continue
+                debit = _money(row.get('Debit'))
+                credit = _money(row.get('Credit'))
+                if debit > 0:  # money out of the account = cancellation / claw-back
+                    if order not in _cancel_dt or dt > _cancel_dt[order]:
+                        _cancel_dt[order] = dt
+                        evopay_cancel[order] = dt.strftime('%m/%d/%Y')
+                else:          # money in (Credit) = original sale
+                    if order not in _sale_dt or dt > _sale_dt[order]:
+                        _sale_dt[order] = dt
+                        evopay_sale[order] = dt.strftime('%m/%d/%Y')
         except Exception as e:
             print(f"Warning: could not read EvoPay file: {e}")
 
-    rows = [build_row(r, remit_date_str, network, evopay_dates) for _, r in raw.iterrows()]
+    rows = [build_row(r, remit_date_str, network, evopay_sale, evopay_cancel) for _, r in raw.iterrows()]
     df_out = pd.DataFrame(rows)
 
     ys_df = df_out[df_out["_category"].isin(["Y&S - Deposit", "Y&S - RecPmt"])].copy()
@@ -453,7 +481,7 @@ def process(csv_path, filename, evopay_path=None):
     combined_total = round(receive_payment_amt + bank_deposit_total, 2)
 
     # ── Determine if this is a TE (per-date) file ────────────────────────────
-    is_te = bool(evopay_dates)
+    is_te = bool(evopay_sale or evopay_cancel)
 
     # ── Build per-date summary rows for TE files ──────────────────────────────
     def _get_filename_prefix(memo_str):
@@ -472,7 +500,9 @@ def process(csv_path, filename, evopay_path=None):
 
     if is_te:
         fn_prefix = _get_filename_prefix(memo)
-        all_dates = sorted(set(evopay_dates.values()))
+        # Dates actually assigned to rows (sale dates for sales, cancellation
+        # dates for canceled orders) — this keeps the range/filename in-range.
+        all_dates = sorted(set(df_out["Date"].dropna().astype(str)))
 
         # Per-date Receive Payment rows (exclude dates with zero amount)
         rp_rows = []
