@@ -547,19 +547,6 @@
     </div>
   </div>
 
-  <!-- Google Sheet card -->
-  <div class="card" id="gsheetsCard" style="display:none;">
-    <div class="section-label">Google Sheet</div>
-    <p style="font-size:13px; color:#666; margin-bottom:16px;">Append the line-item detail (Y&amp;S, Affiliates, StubHub Loan, Other) to the master sheet — each row lands in its month's tab.</p>
-    <div class="push-row">
-      <button class="btn btn-primary" id="gsheetsBtn" onclick="pushToSheets()">
-        <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
-        Add to Google Sheet
-      </button>
-      <span class="push-status" id="gsheetsStatus"></span>
-    </div>
-  </div>
-
 </div>
 
 <script>
@@ -570,8 +557,6 @@
 
   const PUSH_ICON = '<svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>';
   const PUSH_LABELS = { deposit: 'Push Bank Deposit to QBO', receive: 'Push Receive Payment to QBO' };
-  const SHEETS_LABEL = 'Add to Google Sheet';
-  let gsheetsConfigured = false;
 
   function fmt(n) {
     return '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -736,14 +721,6 @@
       document.getElementById('pushButtonsSection').style.display = 'flex';
       resetPushButtons();
 
-      // Google Sheet card (only if the server has it configured)
-      if (gsheetsConfigured) {
-        document.getElementById('gsheetsCard').style.display = 'block';
-        resetSheetsButton();
-      } else {
-        document.getElementById('gsheetsCard').style.display = 'none';
-      }
-
 
       btnText.textContent = 'Process file';
       btn.disabled = false;
@@ -881,78 +858,8 @@
     }
   }
 
-  // ── Google Sheets ───────────────────────────────────────────────────────────
-  async function checkSheetsStatus() {
-    try {
-      const resp = await fetch('/gsheets/status');
-      const data = await resp.json();
-      gsheetsConfigured = !!data.configured;
-    } catch (e) { gsheetsConfigured = false; }
-  }
-
-  function resetSheetsButton() {
-    const btn = document.getElementById('gsheetsBtn');
-    const st = document.getElementById('gsheetsStatus');
-    btn.className = 'btn btn-primary';
-    btn.innerHTML = PUSH_ICON + SHEETS_LABEL;
-    btn.disabled = false;
-    st.className = 'push-status';
-    st.textContent = '';
-  }
-
-  async function pushToSheets() {
-    if (!sessionId) return;
-    const btn = document.getElementById('gsheetsBtn');
-    const st = document.getElementById('gsheetsStatus');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner">⟳</span> Adding…';
-    st.className = 'push-status';
-    st.textContent = '';
-
-    try {
-      const resp = await fetch('/gsheets/push/' + sessionId, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}'
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (resp.ok && data.ok) {
-        // Lock the button so the same rows can't be appended twice
-        btn.className = 'btn btn-done';
-        btn.innerHTML = '✓ Added to Google Sheet';
-        btn.disabled = true;
-        const sheets = data.sheets || [];
-        const parts = sheets.map(s => {
-          const tabs = (s.source_tabs || []).join('/') || 'sheet';
-          return '<a href="' + s.url + '" target="_blank" rel="noopener">' + tabs + '</a> (' + (s.total || 0) + ')';
-        });
-        let msg = 'Added ' + (data.total || 0) + ' row' + ((data.total === 1) ? '' : 's');
-        if (parts.length) msg += ' → ' + parts.join(', ');
-        const skipped = data.skipped || {};
-        const skKeys = Object.keys(skipped);
-        if (skKeys.length) {
-          const skTotal = skKeys.reduce((a, k) => a + skipped[k], 0);
-          msg += ' · ' + skTotal + ' skipped (' + skKeys.join(', ') + ' — no destination set)';
-        }
-        st.className = 'push-status ok';
-        st.innerHTML = msg;
-      } else {
-        st.className = 'push-status err';
-        st.textContent = data.error || 'Could not add to the sheet.';
-        btn.disabled = false;
-        btn.innerHTML = PUSH_ICON + SHEETS_LABEL;
-      }
-    } catch (e) {
-      st.className = 'push-status err';
-      st.textContent = 'Couldn’t reach the server. Please try again.';
-      btn.disabled = false;
-      btn.innerHTML = PUSH_ICON + SHEETS_LABEL;
-    }
-  }
-
   // Check QBO status on page load and after OAuth redirect
   checkQBOStatus();
-  checkSheetsStatus();
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('qbo_connected')) {
     history.replaceState({}, '', '/');
@@ -998,8 +905,6 @@
     document.getElementById('pushButtonsSection').style.display = 'none';
     qboSummaryData = null;
     resetPushButtons();
-    document.getElementById('gsheetsCard').style.display = 'none';
-    resetSheetsButton();
   }
 </script>
 </body>

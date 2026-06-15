@@ -644,26 +644,6 @@ def process(csv_path, filename, evopay_path=None):
         ws_rp.freeze_panes = "A2"
         ws_rp.auto_filter.ref = f"A1:{get_column_letter(len(rp_cols))}1"
 
-    # ── Detail rows for Google Sheets (the four data tabs, combined) ──────────
-    detail_source = [
-        ("Y&S", ys_df),
-        ("Affiliates", affiliates_df),
-        ("StubHub Loan", stubhub_df),
-        ("Other", other_df),
-    ]
-    detail_rows_data = []
-    for tab_name, df in detail_source:
-        for _, r in df[DATA_COLS].iterrows():
-            rec = {"Tab": tab_name}
-            for col in DATA_COLS:
-                v = r[col]
-                if pd.isna(v):
-                    v = ""
-                elif hasattr(v, "item"):   # numpy scalar -> native python
-                    v = v.item()
-                rec[col] = v
-            detail_rows_data.append(rec)
-
     return {
         "wb_applied": wb1,
         "wb_deposit": wb2,
@@ -682,6 +662,4 @@ def process(csv_path, filename, evopay_path=None):
             "Amount": receive_payment_amt,
             "Date": remit_date_str,
         }],
-        # Detail-tab rows for the Google Sheet append
-        "detail_rows_data": detail_rows_data,
     }
