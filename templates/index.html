@@ -554,7 +554,7 @@
     <div class="push-row">
       <button class="btn btn-primary" id="gsheetsBtn" onclick="pushToSheets()">
         <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
-        Add to Google Sheet
+        Push to Google Sheet Ledgers
       </button>
       <span class="push-status" id="gsheetsStatus"></span>
     </div>
@@ -570,7 +570,7 @@
 
   const PUSH_ICON = '<svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>';
   const PUSH_LABELS = { deposit: 'Push Bank Deposit to QBO', receive: 'Push Receive Payment to QBO' };
-  const SHEETS_LABEL = 'Add to Google Sheet';
+  const SHEETS_LABEL = 'Push to Google Sheet Ledgers';
   let gsheetsConfigured = false;
 
   function fmt(n) {
@@ -919,7 +919,7 @@
       if (resp.ok && data.ok) {
         // Lock the button so the same rows can't be appended twice
         btn.className = 'btn btn-done';
-        btn.innerHTML = '✓ Added to Google Sheet';
+        btn.innerHTML = '✓ Pushed to Google Sheet Ledgers';
         btn.disabled = true;
         const sheets = data.sheets || [];
         const parts = sheets.map(s => {

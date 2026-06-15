@@ -343,6 +343,9 @@ def gsheets_push(session_id):
         result = gsheets.append_detail(detail_rows)
         return jsonify({"ok": True, **result})
     except Exception as e:
+        import traceback
+        print(f"[gsheets] push failed: {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
         return jsonify({"ok": False, "error": gsheets.humanize_sheets_error(e)}), 500
 
 

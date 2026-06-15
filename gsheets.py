@@ -227,7 +227,20 @@ def humanize_sheets_error(exc) -> str:
     """Plain-language message for the UI."""
     if isinstance(exc, SheetsNotConfigured):
         return str(exc)
+    import json as _json
     low = str(exc).lower()
+    # Key/JSON can't be parsed (happens before any Google call) — usually a bad paste.
+    if isinstance(exc, (_json.JSONDecodeError, ValueError)) and (
+        "expecting value" in low or "json" in low or "deserialize" in low
+        or "service account" in low or "key" in low or "padding" in low or "format" in low
+    ):
+        return ("The Google service-account key (GOOGLE_SERVICE_ACCOUNT_JSON) couldn't be read — "
+                "it's likely incomplete or its line breaks got mangled. Re-paste the full key JSON.")
+    if "deserialize" in low or "no key could be detected" in low or "expecting value" in low:
+        return ("The Google service-account key (GOOGLE_SERVICE_ACCOUNT_JSON) couldn't be read — "
+                "it's likely incomplete or its line breaks got mangled. Re-paste the full key JSON.")
+    if "drive api has not been used" in low or "drive api is disabled" in low or "has not been used in project" in low:
+        return "Enable the Google Drive API for the project, then try again."
     if "permission" in low or "403" in low or "does not have access" in low:
         email = _service_account_email() or "the service account"
         return f"The Google Sheet isn't shared with {email}. Share it as an Editor and try again."
