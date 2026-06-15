@@ -74,10 +74,10 @@ def _fixed_tab_map():
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
-# Columns written to each month tab — the four detail tabs combined, with a
-# leading "Tab" column showing which Applied Payments tab each row came from.
+# Columns written to each month tab — the four detail tabs share this schema.
+# (The source tab is still used internally for routing, but isn't written as a column.)
 DETAIL_HEADER = [
-    "Tab", "Company", "Date", "Network", "Type", "Order#", "Amount",
+    "Company", "Date", "Network", "Type", "Order#", "Amount",
     "Performer", "Venue", "EventDate", "Section", "Row", "Seat", "Qty", "Reason",
 ]
 
@@ -113,9 +113,9 @@ def _client():
 
 
 def _month_tab_name(date_str):
-    """'mm/dd/yyyy' -> 'May 2026'. Raises if the date can't be parsed."""
+    """'mm/dd/yyyy' -> 'Jun 26'. Raises if the date can't be parsed."""
     dt = datetime.strptime(str(date_str).strip(), "%m/%d/%Y")
-    return dt.strftime("%B %Y")
+    return dt.strftime("%b %y")
 
 
 def _detail_row_to_list(rec):
@@ -144,13 +144,15 @@ def _group_by_worksheet(recs):
 
 def _append_rows_to_month_tab(ss, month, rows, existing):
     """Append rows into a single 'Month YYYY' worksheet of `ss`, creating it if needed."""
+    from string import ascii_uppercase
+    last_col = ascii_uppercase[len(DETAIL_HEADER) - 1]  # e.g. 14 cols -> 'N'
     ws = existing.get(month)
     if ws is None:
         ws = ss.add_worksheet(title=month, rows=max(500, len(rows) + 50), cols=len(DETAIL_HEADER))
         ws.append_row(DETAIL_HEADER, value_input_option="USER_ENTERED")
         try:
             ws.freeze(rows=1)
-            ws.format("A1:O1", {"textFormat": {"bold": True}})
+            ws.format(f"A1:{last_col}1", {"textFormat": {"bold": True}})
         except Exception:
             pass  # formatting is cosmetic; never fail the append over it
         existing[month] = ws
