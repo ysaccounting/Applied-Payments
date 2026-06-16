@@ -5,6 +5,35 @@ from openpyxl.utils import get_column_letter
 import re
 from datetime import datetime
 import os
+import io
+import codecs
+
+
+# TicketVault/EvoPay files are usually UTF-8, but Excel sometimes injects stray
+# Windows-1252 "smart" punctuation bytes (e.g. 0x92 = a curly apostrophe) that
+# break a strict UTF-8 read. This error handler decodes ONLY the stray bytes as
+# CP1252, so genuine UTF-8 (accented venue/performer names like "Rüf") is kept
+# intact while the Windows punctuation is recovered instead of crashing the upload.
+def _utf8_cp1252_fallback(err):
+    return (err.object[err.start:err.end].decode("cp1252", errors="replace"), err.end)
+
+
+codecs.register_error("utf8_cp1252", _utf8_cp1252_fallback)
+
+
+def _read_csv_text(path):
+    """Read a CSV file's text resiliently (UTF-8 with Windows-1252 recovery)."""
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    if raw.startswith(b"\xef\xbb\xbf"):  # strip UTF-8 BOM if present
+        raw = raw[3:]
+    return raw.decode("utf-8", errors="utf8_cp1252")
+
+
+def _read_csv_resilient(path, **kwargs):
+    """pd.read_csv that tolerates stray Windows-1252 bytes in an otherwise UTF-8 file."""
+    return pd.read_csv(io.StringIO(_read_csv_text(path)), **kwargs)
+
 
 # ── Company mapping (static) ──────────────────────────────────────────────────
 COMPANY_MAPPING = {
@@ -396,7 +425,7 @@ def build_deposit_number(network_display, prefix, remit_date):
 
 
 def process(csv_path, filename, evopay_path=None):
-    raw = pd.read_csv(csv_path, usecols=range(19), engine="python", on_bad_lines="skip")
+    raw = _read_csv_resilient(csv_path, usecols=range(19), engine="python", on_bad_lines="skip")
     raw.columns = raw.columns.str.strip()  # remove leading/trailing spaces from column names
     # Validate that column S (Reason) is present
     if "Reason" not in raw.columns:
@@ -425,7 +454,7 @@ def process(csv_path, filename, evopay_path=None):
     if evopay_path:
         try:
             if evopay_path.endswith('.csv'):
-                ep = pd.read_csv(evopay_path)
+                ep = _read_csv_resilient(evopay_path)
             else:
                 ep = pd.read_excel(evopay_path)
             ep.columns = ep.columns.str.strip()
