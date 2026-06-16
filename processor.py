@@ -282,7 +282,9 @@ def build_row(r, remit_date_str, network, evopay_sale=None, evopay_cancel=None):
     if company_out.startswith("Bearhawk"):
         company_out = "Bearhawk Group"
 
-    category = COMPANY_MAPPING_LOWER.get(company_raw.lower(), "Unknown")
+    # Anything not explicitly mapped to Y&S, Affiliates, or StubHub falls to "Other"
+    # (previously these rows were tagged "Unknown" and silently dropped from every tab).
+    category = COMPANY_MAPPING_LOWER.get(company_raw.lower(), "Other")
 
     order_key = str(r["Order#"]).strip()
     sale_date = evopay_sale.get(order_key) if evopay_sale else None
