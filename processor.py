@@ -35,6 +35,26 @@ def _read_csv_resilient(path, **kwargs):
     return pd.read_csv(io.StringIO(_read_csv_text(path)), **kwargs)
 
 
+def _to_amount(v):
+    """Parse a money value to float. Handles plain numbers and strings that
+    include thousands commas, a leading $, surrounding spaces, or accounting
+    parentheses for negatives (e.g. '-1,234.50', '$1,234', '(123.45)'). Blank
+    or unparseable values become 0.0. Some networks (e.g. GoTickets) export the
+    Amount column with thousands commas, which pandas leaves as text."""
+    if isinstance(v, (int, float)):
+        return float(v) if pd.notna(v) else 0.0
+    s = str(v).strip()
+    if s == "" or s.lower() == "nan":
+        return 0.0
+    negative = s.startswith("(") and s.endswith(")")
+    s = s.replace("$", "").replace(",", "").replace("(", "").replace(")", "").strip()
+    try:
+        val = float(s)
+    except ValueError:
+        return 0.0
+    return -val if negative else val
+
+
 # ── Company mapping (static) ──────────────────────────────────────────────────
 COMPANY_MAPPING = {
     "Damon and Crew": "Affiliates",
@@ -242,6 +262,13 @@ def _resolve_shifted_cols(r):
         v = val if pd.notna(val) else ""
         return str(v).strip() if isinstance(v, str) else v
 
+    def _reason_val():
+        # Reason is the user-maintained column S. It stays at that fixed position
+        # even when EventName commas shift the event-data columns, so always read
+        # it directly rather than blanking it out on shifted rows.
+        v = r.get("Reason", "")
+        return str(v).strip() if pd.notna(v) and str(v).strip() != "" else ""
+
     event_date_valid = _is_valid_date(r.get("EventDate", ""))
     section_valid = _is_valid_date(r.get("Section", ""))
     row_valid = _is_valid_date(r.get("Row", ""))
@@ -255,7 +282,7 @@ def _resolve_shifted_cols(r):
             "Row":       _s(r.get("Row", "")),
             "Seat":      _s(r.get("Seat", "")),
             "Qty":       r.get("Qty", ""),
-            "Reason":    (str(r["Reason"]).strip() if "Reason" in r.index and pd.notna(r.get("Reason")) and str(r.get("Reason","")).strip() != "" else ""),
+            "Reason":    _reason_val(),
         }
     elif section_valid:
         # Single shift — EventName spilled into one extra column
@@ -266,7 +293,7 @@ def _resolve_shifted_cols(r):
             "Row":       _s(r.get("Seat", "")),
             "Seat":      _s(r.get("Qty", "")),
             "Qty":       r.get("CancellationReason", ""),
-            "Reason":    "",
+            "Reason":    _reason_val(),
         }
     elif row_valid:
         # Double shift — EventName spilled into two extra columns
@@ -277,7 +304,7 @@ def _resolve_shifted_cols(r):
             "Row":       _s(r.get("Qty", "")),
             "Seat":      _s(r.get("CancellationReason", "")),
             "Qty":       r.get("InternalFulfillmentStatus", ""),
-            "Reason":    "",
+            "Reason":    _reason_val(),
         }
     else:
         # Can't determine shift — return blanks for date-dependent fields
@@ -288,7 +315,7 @@ def _resolve_shifted_cols(r):
             "Row":       _s(r.get("Row", "")),
             "Seat":      _s(r.get("Seat", "")),
             "Qty":       r.get("Qty", ""),
-            "Reason":    "",
+            "Reason":    _reason_val(),
         }
 
 
@@ -430,6 +457,10 @@ def process(csv_path, filename, evopay_path=None):
     # Validate that column S (Reason) is present
     if "Reason" not in raw.columns:
         raise ValueError("Column S (Reason) is missing from this file. Please add the Reason column before uploading.")
+    # Normalize Amount to numeric — some networks export it with thousands commas
+    # (e.g. "-122,400.00"), which pandas would otherwise leave as text.
+    if "Amount" in raw.columns:
+        raw["Amount"] = raw["Amount"].apply(_to_amount)
     network_display, remit_date, deposit_network, bank_account, prefix = parse_filename(filename)
     remit_date_str = remit_date.strftime("%m/%d/%Y")
     network = network_display  # no (C) on detail tabs
