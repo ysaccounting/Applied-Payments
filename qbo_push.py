@@ -143,6 +143,11 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
     """
     Push Bank Deposit entries to QBO.
     Groups rows by deposit_num — one QBO Deposit per deposit#.
+
+    All accounts are resolved BEFORE anything is posted: if any line's account
+    (or a bank account) can't be found, nothing is sent to QuickBooks and a single
+    clear error is returned. This prevents the case where a deposit posts anyway
+    while the app reports failure — which led to duplicate deposits on retry.
     """
     results = []
     token_data = get_valid_token(token_data)
@@ -151,19 +156,27 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
     for row in summary_data["deposit_rows"]:
         groups[row["deposit_num"]].append(row)
 
+    # ── Phase 1: resolve & validate every account up front (post nothing yet) ──
+    prepared = []   # (dep_num, date, lines, bank_acct)
+    problems = []   # human-readable issues; if any, we abort without posting
     for dep_num, rows in groups.items():
         date = rows[0]["date"]
         network_name = rows[0].get("network", "")
-
-        # Look up the network as a customer (Received From)
         received_from = search_customer(token_data, realm_id, network_name) if network_name else None
 
         lines = []
         for row in rows:
-            acct = search_account(token_data, realm_id, row["account"])
+            acct_name = str(row.get("account", "")).strip()
+            acct = search_account(token_data, realm_id, acct_name) if acct_name else None
             if not acct:
-                results.append({"status": "error", "deposit_num": dep_num,
-                                 "error": f"No account named \"{row['account']}\" in QuickBooks."})
+                if acct_name:
+                    problems.append(f'No account named "{acct_name}" exists in QuickBooks.')
+                else:
+                    try:
+                        amt_txt = f'${float(row.get("amount", 0)):,.2f}'
+                    except Exception:
+                        amt_txt = str(row.get("amount"))
+                    problems.append(f'A Bank Deposit row has no Company assigned (amount {amt_txt}) — assign it and re-process.')
                 continue
 
             deposit_detail = {
@@ -183,26 +196,59 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
                 "DepositLineDetail": deposit_detail,
             })
 
-        if not lines:
-            continue
-
-        bank_acct = search_account(token_data, realm_id, rows[0]["bank_account"])
+        bank_name = str(rows[0].get("bank_account", "")).strip()
+        bank_acct = search_account(token_data, realm_id, bank_name) if bank_name else None
         if not bank_acct:
-            results.append({"status": "error", "deposit_num": dep_num,
-                             "error": f"No bank account named \"{rows[0]['bank_account']}\" in QuickBooks."})
-            continue
+            problems.append(f'No bank account named "{rows[0].get("bank_account", "")}" exists in QuickBooks.')
 
-        payload = {
-            "TxnDate": _parse_date(date),
-            "PrivateNote": dep_num,
-            "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
-            "Line": lines,
-        }
-        try:
+        prepared.append((dep_num, date, lines, bank_acct))
+
+    if problems:
+        # Nothing has been posted. Return one clear error so the button stays
+        # active and a retry (after the data is fixed) won't create a duplicate.
+        unique = list(dict.fromkeys(problems))
+        msg = "Deposit not sent — nothing was posted to QuickBooks. " + " ".join(unique) + " Fix this and push again."
+        return [{"status": "error", "deposit_num": "deposit", "error": msg}]
+
+    # ── Phase 2: everything resolved — post all deposits, all-or-nothing ──
+    # If any deposit fails at post time, roll back (delete) the ones already
+    # created in this batch so the entire group either fully posts or not at all.
+    posted = []  # (dep_num, id, synctoken)
+    try:
+        for dep_num, date, lines, bank_acct in prepared:
+            if not lines:
+                continue
+            payload = {
+                "TxnDate": _parse_date(date),
+                "PrivateNote": dep_num,
+                "DepositToAccountRef": {"value": bank_acct["Id"], "name": bank_acct["Name"]},
+                "Line": lines,
+            }
             result = api_post(token_data, realm_id, "deposit?minorversion=65", payload)
-            results.append({"status": "ok", "deposit_num": dep_num,
-                             "id": result.get("Deposit", {}).get("Id")})
-        except Exception as e:
-            results.append({"status": "error", "deposit_num": dep_num, "error": humanize_error(e)})
+            dep = result.get("Deposit", {})
+            posted.append((dep_num, dep.get("Id"), dep.get("SyncToken", "0")))
+    except Exception as e:
+        base = humanize_error(e)
+        # Roll back anything that posted before the failure.
+        failed_rollback = []
+        for dn, dep_id, sync in posted:
+            if not dep_id:
+                continue
+            try:
+                api_post(token_data, realm_id, "deposit?operation=delete&minorversion=65",
+                         {"Id": dep_id, "SyncToken": sync or "0"})
+            except Exception:
+                failed_rollback.append((dn, dep_id))
+        if failed_rollback:
+            remaining = ", ".join(f"{dn} (Id {i})" for dn, i in failed_rollback)
+            msg = (f"{base} Some deposits posted before the error and could NOT be automatically "
+                   f"removed: {remaining}. Please delete them in QuickBooks before pushing again.")
+        else:
+            msg = (f"{base} Nothing was left in QuickBooks — any deposits that posted before the "
+                   f"error were rolled back. Fix the issue and push again.")
+        return [{"status": "error", "deposit_num": "deposit", "error": msg}]
 
+    # All deposits posted successfully.
+    for dep_num, dep_id, sync in posted:
+        results.append({"status": "ok", "deposit_num": dep_num, "id": dep_id})
     return results
