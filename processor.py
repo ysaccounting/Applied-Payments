@@ -59,6 +59,7 @@ def _to_amount(v):
 COMPANY_MAPPING = {
     "Damon and Crew": "Affiliates",
     "Bearhawk - Aaron-Fee": "Affiliates",
+    "Bearhawk - Ari-Fee": "Affiliates",
     "Bearhawk - Chris-Fee": "Affiliates",
     "Bearhawk - Dylan-Fee": "Affiliates",
     "Bearhawk - Gray-Fee": "Affiliates",
@@ -101,6 +102,7 @@ COMPANY_MAPPING = {
     "Best Tix": "Affiliates",
     "Ticketwonders LLC": "Affiliates",
     "Bearhawk - Aaron": "Affiliates",
+    "Bearhawk - Ari": "Affiliates",
     "Bearhawk - Chris": "Affiliates",
     "Bearhawk - Dylan": "Affiliates",
     "Bearhawk - Gray": "Affiliates",
