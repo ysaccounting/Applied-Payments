@@ -390,7 +390,8 @@
 
     const lname = f.name.toLowerCase();
     const isXlsx = lname.endsWith('.xlsx');
-    const isTE = !isXlsx && lname.includes('ticketevolution');
+    // TicketEvolution needs the EvoPay file whether it's the raw .csv or a Zone 1 review .xlsx
+    const isTE = lname.includes('ticketevolution');
     document.getElementById('evoPaySection').style.display = isTE ? 'block' : 'none';
     document.getElementById('cashReceivedSection').style.display = isTE ? 'none' : 'block';
     if (!isTE) { evoPayFile = null; }
@@ -437,7 +438,7 @@
     const cash = document.getElementById('cashInput').value;
     const lname = selectedFile ? selectedFile.name.toLowerCase() : '';
     const isXlsx = lname.endsWith('.xlsx');
-    const isTE = !isXlsx && lname.includes('ticketevolution');
+    const isTE = lname.includes('ticketevolution');
     const ready = selectedFile && (isTE || isXlsx || cash !== '');
     document.getElementById('processBtn').disabled = !ready;
   }

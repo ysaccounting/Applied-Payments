@@ -128,10 +128,10 @@ def process_file():
     zone1_snapshot = None
     use_new_path = fname_lower.endswith(".xlsx") and z2.looks_like_zone1(upload_path)
 
-    # Handle optional EvoPay file for TicketEvolution uploads (old path only)
+    # Handle optional EvoPay file for TicketEvolution uploads (works for both paths).
     evopay_path = None
     evopay_file = request.files.get("evopay_file")
-    if evopay_file and evopay_file.filename and not use_new_path:
+    if evopay_file and evopay_file.filename:
         evopay_ext = os.path.splitext(evopay_file.filename)[1].lower()
         evopay_path = os.path.join(UPLOAD_FOLDER, f"{session_id}_evopay{evopay_ext}")
         evopay_file.save(evopay_path)
@@ -139,7 +139,7 @@ def process_file():
     try:
         if use_new_path:
             raw_df, proc_filename, zone1_snapshot = z2.read_filled_zone1(upload_path, f.filename)
-            result = process(None, proc_filename, raw_df=raw_df)
+            result = process(None, proc_filename, evopay_path=evopay_path, raw_df=raw_df)
         else:
             if not fname_lower.endswith(".csv"):
                 raise ValueError("This .xlsx doesn't look like a Zone 1 review file. "
