@@ -142,7 +142,7 @@ def generate_review_workbook(input_path):
         d.error = 'Pick a value from the list.'; d.errorTitle = 'Invalid entry'
         ws.add_data_validation(d); return d
     dv('"Due from/to TickPick,Not Found,StubHub Loan"').add(f'U2:U{last}')
-    dv('"Problem Order,Cancelled Event,Discount,TradeDesk Fees"').add(f'V2:V{last}')
+    dv('"Cancelled Event,Discount,Problem Order,TradeDesk Fees"').add(f'V2:V{last}')
     dv('"Yes,No"').add(f'W2:W{last}')
     dv('"Yes"').add(f'X2:X{last}')
 
@@ -206,18 +206,15 @@ def _build_rules_tab(wb):
         ('Cancellation Reason', None,
          'Notes in Column P which came from TV carry over automatically to this column. '
          'Manually fill in the blank rows as needed.'),
-        ('Misc Company is filled in', None,
-         'This value replaces the Company. Leave Cancellation Reason, Chargeback Type, Already Paid, and '
-         'Cancelled Out columns blank.'),
+        ('Misc Company is filled in',
+         "(if this column is filled in, don't fill in the other columns)",
+         'This value replaces the Company.'),
         ('Chargeback Type = Cancelled Event',
          '(the full chargeback amount is a payout recoup with no cancellation fee)',
          'Nothing changes on the row.'),
         ('Chargeback Type = Discount',
          '(the full chargeback amount is a cancellation fee)',
          discount_b),
-        ('Chargeback Type = TradeDesk Fees',
-         '(the full chargeback amount is Other Fees)',
-         'Company is set to Other Fees. Do not fill in Not Found in the Misc Company column.'),
         ('Chargeback Type = Problem Order  +  Already Paid? = Yes',
          '(the chargeback amount is a payout recoup + cancellation fee)',
          'The row is split into two negative lines:\n'
@@ -227,6 +224,9 @@ def _build_rules_tab(wb):
         ('Chargeback Type = Problem Order  +  Already Paid? = No',
          '(the full chargeback amount is a cancellation fee)',
          '"-Fee" is added to the Company name so that it\'s treated as a cancellation fee.'),
+        ('Chargeback Type = TradeDesk Fees',
+         '(the full chargeback amount is Other Fees)',
+         'Company is set to Other Fees. Do not fill in Not Found in the Misc Company column.'),
         ('Cancelled Out?', None,
          'Confirm the order is cancelled out from TV if necessary and put Yes.'),
     ]
