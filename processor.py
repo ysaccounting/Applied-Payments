@@ -342,7 +342,15 @@ def build_row(r, remit_date_str, network, evopay_sale=None, evopay_cancel=None):
 
     # Anything not explicitly mapped to Y&S, Affiliates, or StubHub falls to "Other"
     # (previously these rows were tagged "Unknown" and silently dropped from every tab).
-    category = COMPANY_MAPPING_LOWER.get(company_raw.lower(), "Other")
+    _key = company_raw.lower()
+    if _key in COMPANY_MAPPING_LOWER:
+        category = COMPANY_MAPPING_LOWER[_key]
+    elif is_fee:
+        # A "-Fee" company that isn't explicitly mapped inherits its base company's
+        # category (e.g. "GK LLC-Fee" follows "GK LLC") instead of dropping to "Other".
+        category = COMPANY_MAPPING_LOWER.get(re.sub(r"-fee$", "", _key), "Other")
+    else:
+        category = "Other"
 
     order_key = str(r["Order#"]).strip()
     sale_date = evopay_sale.get(order_key) if evopay_sale else None
@@ -453,8 +461,11 @@ def build_deposit_number(network_display, prefix, remit_date):
     return "_".join(parts)
 
 
-def process(csv_path, filename, evopay_path=None):
-    raw = _read_csv_resilient(csv_path, usecols=range(19), engine="python", on_bad_lines="skip")
+def process(csv_path, filename, evopay_path=None, raw_df=None):
+    if raw_df is not None:
+        raw = raw_df.copy()                # new two-zone path: rows already prepared
+    else:
+        raw = _read_csv_resilient(csv_path, usecols=range(19), engine="python", on_bad_lines="skip")
     raw.columns = raw.columns.str.strip()  # remove leading/trailing spaces from column names
     # Validate that column S (Reason) is present
     if "Reason" not in raw.columns:

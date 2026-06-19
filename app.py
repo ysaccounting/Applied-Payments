@@ -7,6 +7,8 @@ import hmac
 import json
 from flask import Flask, request, jsonify, send_file, render_template, redirect, session, Response
 from processor import process
+import zone1
+import zone2_intake as z2
 from qbo_auth import get_auth_url, exchange_code, get_valid_token
 from qbo_push import push_bank_deposit, push_receive_payments, get_company_info
 import token_store
@@ -79,38 +81,88 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/zone1/generate", methods=["POST"])
+def zone1_generate():
+    """Step 1 — raw report (.csv) in, enriched review workbook (.xlsx) out."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+    f = request.files["file"]
+    if not f.filename.lower().endswith(".csv"):
+        return jsonify({"error": "Step 1 needs the raw report as a .csv"}), 400
+
+    session_id = str(uuid.uuid4())
+    src_path = os.path.join(UPLOAD_FOLDER, f"{session_id}_{f.filename}")
+    f.save(src_path)
+    try:
+        wb, _tab = zone1.generate_review_workbook(src_path)
+    except Exception as e:
+        if os.path.exists(src_path):
+            os.remove(src_path)
+        return jsonify({"error": f"Couldn't build the review file: {e}"}), 500
+    finally:
+        if os.path.exists(src_path):
+            os.remove(src_path)
+
+    base = os.path.splitext(f.filename)[0]
+    out_name = f"{base}_zone1.xlsx"
+    out_path = os.path.join(OUTPUT_FOLDER, f"{session_id}__zone1__{out_name}")
+    wb.save(out_path)
+    return send_file(out_path, as_attachment=True, download_name=out_name)
+
+
 @app.route("/process", methods=["POST"])
 def process_file():
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
     f = request.files["file"]
-    if not f.filename.endswith(".csv"):
-        return jsonify({"error": "File must be a .csv"}), 400
+    fname_lower = f.filename.lower()
+    if not (fname_lower.endswith(".csv") or fname_lower.endswith(".xlsx")):
+        return jsonify({"error": "File must be a .csv (old way) or a filled Zone 1 workbook (.xlsx)"}), 400
 
     session_id = str(uuid.uuid4())
-    csv_path = os.path.join(UPLOAD_FOLDER, f"{session_id}_{f.filename}")
-    f.save(csv_path)
+    upload_path = os.path.join(UPLOAD_FOLDER, f"{session_id}_{f.filename}")
+    f.save(upload_path)
 
-    # Handle optional EvoPay file for TicketEvolution uploads
+    # New two-zone path: a filled Zone-1 workbook (.xlsx with the answer columns).
+    zone1_snapshot = None
+    use_new_path = fname_lower.endswith(".xlsx") and z2.looks_like_zone1(upload_path)
+
+    # Handle optional EvoPay file for TicketEvolution uploads (old path only)
     evopay_path = None
     evopay_file = request.files.get("evopay_file")
-    if evopay_file and evopay_file.filename:
+    if evopay_file and evopay_file.filename and not use_new_path:
         evopay_ext = os.path.splitext(evopay_file.filename)[1].lower()
         evopay_path = os.path.join(UPLOAD_FOLDER, f"{session_id}_evopay{evopay_ext}")
         evopay_file.save(evopay_path)
 
     try:
-        result = process(csv_path, f.filename, evopay_path=evopay_path)
+        if use_new_path:
+            raw_df, proc_filename, zone1_snapshot = z2.read_filled_zone1(upload_path, f.filename)
+            result = process(None, proc_filename, raw_df=raw_df)
+        else:
+            if not fname_lower.endswith(".csv"):
+                raise ValueError("This .xlsx doesn't look like a Zone 1 review file. "
+                                 "Upload the raw report as a .csv, or a filled Zone 1 workbook.")
+            result = process(upload_path, f.filename, evopay_path=evopay_path)
     except Exception as e:
-        if os.path.exists(csv_path):
-            os.remove(csv_path)
+        if os.path.exists(upload_path):
+            os.remove(upload_path)
         if evopay_path and os.path.exists(evopay_path):
             os.remove(evopay_path)
         return jsonify({"error": str(e)}), 500
     finally:
         if evopay_path and os.path.exists(evopay_path):
             os.remove(evopay_path)
+
+    # Add the "Zone 1 Output" tab (new path only) to the Applied Payments workbook.
+    if zone1_snapshot is not None and result.get("wb_applied") is not None:
+        try:
+            z2.add_zone1_output_tab(result["wb_applied"], zone1_snapshot)
+        except Exception:
+            pass
+
+    csv_path = upload_path  # so the existing cleanup below still works
 
     memo = result["memo"]
     date_range = result.get("date_range_str")

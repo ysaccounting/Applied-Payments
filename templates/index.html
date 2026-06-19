@@ -373,9 +373,34 @@
     </div>
   </div>
 
+  <!-- Step 1: Prepare review file -->
+  <div class="card">
+    <div class="section-label">Step 1 — Prepare review file (optional)</div>
+    <div class="drop-zone" id="z1DropZone"
+         onclick="document.getElementById('z1Input').click()"
+         ondragover="onZ1DragOver(event)"
+         ondragleave="onZ1DragLeave(event)"
+         ondrop="onZ1Drop(event)">
+      <div class="drop-icon">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <div class="drop-title" id="z1DropTitle">Drag &amp; drop a raw report (.csv) here.</div>
+      <div class="drop-sub" id="z1DropSub">or click to browse</div>
+      <div class="drop-filename" id="z1DropFilename"></div>
+    </div>
+    <input type="file" id="z1Input" accept=".csv" style="display:none" onchange="onZ1Select(this.files[0])">
+    <p style="font-size: 13px; color: #555; margin-top: 12px;">Builds a review workbook that flags the rows needing review (yellow). Fill in the answer columns, then upload the saved file in Step 2.</p>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="z1Btn" onclick="generateReviewFile()" disabled>
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span id="z1BtnText">Generate review file</span>
+      </button>
+    </div>
+  </div>
+
   <!-- Upload card -->
   <div class="card">
-    <div class="section-label">Applied Payments Report</div>
+    <div class="section-label">Step 2 — Process report</div>
 
     <div class="drop-zone" id="dropZone"
          onclick="document.getElementById('fileInput').click()"
@@ -385,11 +410,11 @@
       <div class="drop-icon">
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       </div>
-      <div class="drop-title" id="dropTitle">Drag &amp; drop the TicketVault applied payments report here.</div>
+      <div class="drop-title" id="dropTitle">Drag &amp; drop the report here — a .csv (today's way) or a filled review file (.xlsx) from Step 1.</div>
       <div class="drop-sub" id="dropSub">or click to browse</div>
       <div class="drop-filename" id="dropFilename"></div>
     </div>
-    <input type="file" id="fileInput" accept=".csv" style="display:none" onchange="onFileSelect(this.files[0])">
+    <input type="file" id="fileInput" accept=".csv,.xlsx" style="display:none" onchange="onFileSelect(this.files[0])">
 
     <!-- EvoPay upload zone — shown only for TicketEvolution files -->
     <div id="evoPaySection" style="display:none; margin-top: 20px;">
@@ -417,7 +442,7 @@
       </div>
     </div>
 
-    <p style="font-size: 15px; font-weight: 700; color: #e00000; margin-top: 16px; letter-spacing: 0.3px;">MAKE SURE TO USE COLUMN S FOR REASON AND INPUT THE RELEVANT NOTES FOR CHARGEBACKS BEFORE UPLOADING HERE.</p>
+    <p style="font-size: 15px; font-weight: 700; color: #e00000; margin-top: 16px; letter-spacing: 0.3px;">UPLOADING A RAW .CSV (TODAY'S WAY)? MAKE SURE TO USE COLUMN S FOR REASON AND INPUT THE RELEVANT NOTES FOR CHARGEBACKS FIRST. UPLOADING A FILLED REVIEW FILE FROM STEP 1? YOU'RE ALL SET.</p>
 
     <div class="btn-row">
       <button class="btn btn-primary" id="processBtn" onclick="processFile()" disabled>
@@ -549,7 +574,7 @@
 
   <!-- Google Sheet card -->
   <div class="card" id="gsheetsCard" style="display:none;">
-    <div class="section-label">Google Sheet Ledgers</div>
+    <div class="section-label">Google Sheet</div>
     <div class="push-row">
       <button class="btn btn-primary" id="gsheetsBtn" onclick="pushToSheets()">
         <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
@@ -576,6 +601,56 @@
     return '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  // ── Step 1: build the review workbook ───────────────────────────────
+  let z1File = null;
+  function onZ1DragOver(e){ e.preventDefault(); document.getElementById('z1DropZone').classList.add('drag-over'); }
+  function onZ1DragLeave(e){ document.getElementById('z1DropZone').classList.remove('drag-over'); }
+  function onZ1Drop(e){
+    e.preventDefault();
+    document.getElementById('z1DropZone').classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.name.toLowerCase().endsWith('.csv')) setZ1File(f);
+  }
+  function onZ1Select(f){ if (f) setZ1File(f); }
+  function setZ1File(f){
+    z1File = f;
+    document.getElementById('z1DropZone').classList.add('has-file');
+    document.getElementById('z1DropTitle').textContent = 'File selected';
+    document.getElementById('z1DropSub').textContent = '';
+    document.getElementById('z1DropFilename').textContent = f.name;
+    document.getElementById('z1Btn').disabled = false;
+  }
+  async function generateReviewFile(){
+    if (!z1File) return;
+    const btn = document.getElementById('z1Btn');
+    const btnText = document.getElementById('z1BtnText');
+    btn.disabled = true;
+    btnText.innerHTML = '<span class="spinner">⟳</span> Building…';
+    try {
+      const fd = new FormData();
+      fd.append('file', z1File);
+      const resp = await fetch('/zone1/generate', { method: 'POST', body: fd });
+      if (!resp.ok) {
+        let msg = 'Could not build the review file.';
+        try { const j = await resp.json(); if (j.error) msg = j.error; } catch (e) {}
+        alert('Error: ' + msg);
+        return;
+      }
+      const blob = await resp.blob();
+      const base = z1File.name.replace(/\.csv$/i, '');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = base + '_zone1.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      alert('Error: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btnText.textContent = 'Generate review file';
+    }
+  }
+
   function onDragOver(e) {
     e.preventDefault();
     document.getElementById('dropZone').classList.add('drag-over');
@@ -589,7 +664,7 @@
     e.preventDefault();
     document.getElementById('dropZone').classList.remove('drag-over');
     const f = e.dataTransfer.files[0];
-    if (f && f.name.endsWith('.csv')) setFile(f);
+    if (f && (f.name.toLowerCase().endsWith('.csv') || f.name.toLowerCase().endsWith('.xlsx'))) setFile(f);
   }
 
   function onFileSelect(f) {
@@ -604,8 +679,10 @@
     document.getElementById('dropSub').textContent = '';
     document.getElementById('dropFilename').textContent = f.name;
 
-    // Show EvoPay section and hide cash received for TicketEvolution files
-    const isTE = f.name.toLowerCase().includes('ticketevolution');
+    const lname = f.name.toLowerCase();
+    const isXlsx = lname.endsWith('.xlsx');          // filled review file (new path)
+    // EvoPay only applies to the old CSV TicketEvolution path
+    const isTE = !isXlsx && lname.includes('ticketevolution');
     document.getElementById('evoPaySection').style.display = isTE ? 'block' : 'none';
     document.getElementById('cashReceivedSection').style.display = isTE ? 'none' : 'block';
     if (!isTE) { evoPayFile = null; }
@@ -650,8 +727,10 @@
 
   function checkReady() {
     const cash = document.getElementById('cashInput').value;
-    const isTE = selectedFile && selectedFile.name.toLowerCase().includes('ticketevolution');
-    const ready = selectedFile && (isTE || cash !== '');
+    const lname = selectedFile ? selectedFile.name.toLowerCase() : '';
+    const isXlsx = lname.endsWith('.xlsx');
+    const isTE = !isXlsx && lname.includes('ticketevolution');
+    const ready = selectedFile && (isTE || isXlsx || cash !== '');
     document.getElementById('processBtn').disabled = !ready;
   }
 
