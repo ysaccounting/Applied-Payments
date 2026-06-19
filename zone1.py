@@ -152,7 +152,7 @@ def generate_review_workbook(input_path):
     for col, w in widths.items():
         ws.column_dimensions[col].width = w
 
-    ws.freeze_panes = 'D2'
+    ws.freeze_panes = 'I2'   # keep columns A-H (Company..Performer) pinned while scrolling right
     ws.auto_filter.ref = 'A1:R1'
     ws.protection = SheetProtection(sheet=True,
         selectLockedCells=False, selectUnlockedCells=False,
@@ -251,10 +251,19 @@ def _build_rules_tab(wb):
         r += 1
 
     r += 1
-    rs.cell(row=r, column=1, value='One thing that blocks Zone 2 processing').font = Font(name='Arial', size=11, bold=True, color='9C0006')
+    rs.cell(row=r, column=1, value='What blocks Zone 2 processing').font = Font(name='Arial', size=11, bold=True, color='9C0006')
     r += 1
-    c = rs.cell(row=r, column=1,
-                value='•  A yellow (flagged) row left with all answer columns blank. Zone 2 stops and lists the rows to fix.')
+    blocks = [
+        'A yellow (flagged) row left with all answer columns blank.',
+        "A Problem Order row with no 'Already Paid?' answer.",
+        "A Problem Order or Cancelled Event row that doesn't have 'Cancelled Out?' = Yes.",
+    ]
+    for b in blocks:
+        c = rs.cell(row=r, column=1, value='•  ' + b)
+        c.font = FONT; c.alignment = wrap
+        rs.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+        r += 1
+    c = rs.cell(row=r, column=1, value='In each case Zone 2 stops and lists the exact rows to fix.')
     c.font = FONT; c.alignment = wrap
     rs.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
 

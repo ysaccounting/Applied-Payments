@@ -96,6 +96,7 @@ def read_filled_zone1(xlsx_path, original_filename):
     snapshot.append(snap_header)
 
     errors = []
+    confirm_errors = []
     for r in range(2, ws.max_row + 1):
         company = _s(cell(r, 'Company'))
         amount = _to_amt(cell(r, 'Amount'))
@@ -129,6 +130,11 @@ def read_filled_zone1(xlsx_path, original_filename):
             errors.append(f"row {r} (Order# {order or 'blank'}, Amount {amount})")
             continue
 
+        # Problem Order / Cancelled Event must be confirmed cancelled out in TV (X = Yes).
+        # Skipped when Misc Company overrides the row (that ignores the V/W/X answers).
+        if not misc and ctype in ('Problem Order', 'Cancelled Event') and cancelled != 'Yes':
+            confirm_errors.append(f"row {r} (Order# {order or 'blank'}, {ctype})")
+
         if misc:                              # Rule 1 — Misc Company overrides Company
             base['Company'] = misc
             out_rows.append(base)
@@ -158,10 +164,17 @@ def read_filled_zone1(xlsx_path, original_filename):
             # only Cancelled Out? (or some non-transforming answer) was set — pass through unchanged
             out_rows.append(base)
 
+    problems = []
     if errors:
-        head = ("Can't process — these yellow rows still need answers "
-                "(fill the Misc Company / Chargeback Type / Already Paid? / Cancelled Out? columns):\n  • ")
-        raise ValueError(head + "\n  • ".join(errors))
+        problems.append("These yellow rows still need answers "
+                        "(fill the Misc Company / Chargeback Type / Already Paid? / Cancelled Out? columns):\n  • "
+                        + "\n  • ".join(errors))
+    if confirm_errors:
+        problems.append("These rows are Problem Order or Cancelled Event but don't have 'Cancelled Out?' = Yes. "
+                        "Confirm the order is cancelled out in TV, then set column X to Yes:\n  • "
+                        + "\n  • ".join(confirm_errors))
+    if problems:
+        raise ValueError("Can't process —\n\n" + "\n\n".join(problems))
 
     raw_df = pd.DataFrame(out_rows, columns=PROC_COLS)
 
@@ -211,5 +224,5 @@ def add_zone1_output_tab(wb, snapshot, title='Zone 1 Output'):
               'U': 17, 'V': 14, 'W': 15}
     for col, w in widths.items():
         ws.column_dimensions[col].width = w
-    ws.freeze_panes = 'A2'
+    ws.freeze_panes = 'I2'   # keep columns A-H pinned while scrolling right
     return ws
