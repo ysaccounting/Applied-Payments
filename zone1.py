@@ -159,10 +159,14 @@ def generate_review_workbook(input_path):
         sort=False, autoFilter=False,
         formatCells=False, formatColumns=False, formatRows=False)
 
-    red = PatternFill('solid', fgColor='FFC7CE')
-    redfont = Font(name='Arial', size=10, color='9C0006')
+    red = PatternFill('solid', fgColor='E53935')   # solid red cell = "leave this blank"
+    redfont = Font(name='Arial', size=10, color='FFFFFF')
     ws.conditional_formatting.add(f'V2:X{last}',
         FormulaRule(formula=['$U2<>""'], fill=red, font=redfont, stopIfTrue=False))
+    # Discount: the order should NOT be cancelled out, so flag the Cancelled Out? cell red
+    # (same "don't fill this" red the sheet uses above) the moment Discount is chosen.
+    ws.conditional_formatting.add(f'X2:X{last}',
+        FormulaRule(formula=['$V2="Discount"'], fill=red, font=redfont, stopIfTrue=False))
 
     _build_rules_tab(wb)
     return wb, ws.title
@@ -199,7 +203,7 @@ def _build_rules_tab(wb):
     discount_b = CellRichText([
         TextBlock(PLAIN, '"-Fee" is added to the Company name so that it\'s treated as a cancellation fee, but '),
         TextBlock(BOLD, 'do not'),
-        TextBlock(PLAIN, ' cancel out the order from TV.'),
+        TextBlock(PLAIN, ' cancel out the order from TV, and leave the Cancelled Out? column blank.'),
     ])
 
     rules = [
@@ -258,6 +262,8 @@ def _build_rules_tab(wb):
         "A Problem Order row with no 'Already Paid?' answer.",
         "A Problem Order or Cancelled Event row that doesn't have 'Cancelled Out?' = Yes.",
         'A Cancelled Event, Problem Order, or Discount row with a blank Cancellation Reason.',
+        'A Misc Company row with Chargeback Type, Already Paid?, or Cancelled Out? also filled.',
+        "A Discount row with 'Cancelled Out?' filled in.",
     ]
     for b in blocks:
         c = rs.cell(row=r, column=1, value='•  ' + b)

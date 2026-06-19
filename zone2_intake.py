@@ -98,6 +98,8 @@ def read_filled_zone1(xlsx_path, original_filename):
     errors = []
     confirm_errors = []
     reason_errors = []
+    misc_errors = []
+    discount_errors = []
     for r in range(2, ws.max_row + 1):
         company = _s(cell(r, 'Company'))
         amount = _to_amt(cell(r, 'Amount'))
@@ -139,6 +141,14 @@ def read_filled_zone1(xlsx_path, original_filename):
         # Cancelled Event / Problem Order / Discount require a Cancellation Reason.
         if not misc and ctype in ('Cancelled Event', 'Problem Order', 'Discount') and reason == '':
             reason_errors.append(f"row {r} (Order# {order or 'blank'}, {ctype})")
+
+        # Misc Company overrides the row, so the other answer cells (the red ones) must be blank.
+        if misc and (ctype or paid or cancelled):
+            misc_errors.append(f"row {r} (Order# {order or 'blank'})")
+
+        # Discount: the order must NOT be cancelled out, so Cancelled Out? (the red cell) must be blank.
+        if not misc and ctype == 'Discount' and cancelled != '':
+            discount_errors.append(f"row {r} (Order# {order or 'blank'})")
 
         if misc:                              # Rule 1 — Misc Company overrides Company
             base['Company'] = misc
@@ -182,6 +192,15 @@ def read_filled_zone1(xlsx_path, original_filename):
         problems.append("These rows are Cancelled Event, Problem Order, or Discount but have a blank Cancellation Reason. "
                         "Fill in the Cancellation Reason column:\n  • "
                         + "\n  • ".join(reason_errors))
+    if misc_errors:
+        problems.append("These rows have a Misc Company set AND another answer column filled. "
+                        "When Misc Company is used, leave Chargeback Type / Already Paid? / Cancelled Out? blank "
+                        "(the red cells):\n  • "
+                        + "\n  • ".join(misc_errors))
+    if discount_errors:
+        problems.append("These Discount rows have 'Cancelled Out?' filled. A Discount order should not be cancelled "
+                        "out — clear the Cancelled Out? column (the red cell):\n  • "
+                        + "\n  • ".join(discount_errors))
     if problems:
         raise ValueError("Can't process —\n\n" + "\n\n".join(problems))
 
