@@ -257,6 +257,7 @@ def _build_rules_tab(wb):
         'A yellow (flagged) row left with all answer columns blank.',
         "A Problem Order row with no 'Already Paid?' answer.",
         "A Problem Order or Cancelled Event row that doesn't have 'Cancelled Out?' = Yes.",
+        'A Cancelled Event, Problem Order, or Discount row with a blank Cancellation Reason.',
     ]
     for b in blocks:
         c = rs.cell(row=r, column=1, value='•  ' + b)

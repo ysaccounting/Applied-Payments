@@ -97,6 +97,7 @@ def read_filled_zone1(xlsx_path, original_filename):
 
     errors = []
     confirm_errors = []
+    reason_errors = []
     for r in range(2, ws.max_row + 1):
         company = _s(cell(r, 'Company'))
         amount = _to_amt(cell(r, 'Amount'))
@@ -134,6 +135,10 @@ def read_filled_zone1(xlsx_path, original_filename):
         # Skipped when Misc Company overrides the row (that ignores the V/W/X answers).
         if not misc and ctype in ('Problem Order', 'Cancelled Event') and cancelled != 'Yes':
             confirm_errors.append(f"row {r} (Order# {order or 'blank'}, {ctype})")
+
+        # Cancelled Event / Problem Order / Discount require a Cancellation Reason.
+        if not misc and ctype in ('Cancelled Event', 'Problem Order', 'Discount') and reason == '':
+            reason_errors.append(f"row {r} (Order# {order or 'blank'}, {ctype})")
 
         if misc:                              # Rule 1 — Misc Company overrides Company
             base['Company'] = misc
@@ -173,6 +178,10 @@ def read_filled_zone1(xlsx_path, original_filename):
         problems.append("These rows are Problem Order or Cancelled Event but don't have 'Cancelled Out?' = Yes. "
                         "Confirm the order is cancelled out in TV, then set column X to Yes:\n  • "
                         + "\n  • ".join(confirm_errors))
+    if reason_errors:
+        problems.append("These rows are Cancelled Event, Problem Order, or Discount but have a blank Cancellation Reason. "
+                        "Fill in the Cancellation Reason column:\n  • "
+                        + "\n  • ".join(reason_errors))
     if problems:
         raise ValueError("Can't process —\n\n" + "\n\n".join(problems))
 
