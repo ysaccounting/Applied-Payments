@@ -375,7 +375,7 @@
 
   <!-- Step 1: Prepare review file -->
   <div class="card">
-    <div class="section-label">Step 1 — Prepare review file (optional)</div>
+    <div class="section-label">Zone 1 (optional) - upload the applied payments report from TicketVault exactly as it comes. Then download the output file for subsequent review and upload into Zone 2.</div>
     <div class="drop-zone" id="z1DropZone"
          onclick="document.getElementById('z1Input').click()"
          ondragover="onZ1DragOver(event)"
@@ -384,23 +384,22 @@
       <div class="drop-icon">
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       </div>
-      <div class="drop-title" id="z1DropTitle">Drag &amp; drop a raw report (.csv) here.</div>
+      <div class="drop-title" id="z1DropTitle">Drag &amp; drop the raw report (.csv) here.</div>
       <div class="drop-sub" id="z1DropSub">or click to browse</div>
       <div class="drop-filename" id="z1DropFilename"></div>
     </div>
     <input type="file" id="z1Input" accept=".csv" style="display:none" onchange="onZ1Select(this.files[0])">
-    <p style="font-size: 13px; color: #555; margin-top: 12px;">Builds a review workbook that flags the rows needing review (yellow). Fill in the answer columns, then upload the saved file in Step 2.</p>
     <div class="btn-row">
       <button class="btn btn-primary" id="z1Btn" onclick="generateReviewFile()" disabled>
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span id="z1BtnText">Generate review file</span>
+        <span id="z1BtnText">Generate Review File</span>
       </button>
     </div>
   </div>
 
   <!-- Upload card -->
   <div class="card">
-    <div class="section-label">Step 2 — Process report</div>
+    <div class="section-label">Zone 2 (Required) — Upload the reviewed output file from Zone 1, or the traditional updated file.</div>
 
     <div class="drop-zone" id="dropZone"
          onclick="document.getElementById('fileInput').click()"
