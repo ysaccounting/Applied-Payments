@@ -159,7 +159,7 @@ def generate_review_workbook(input_path):
         sort=False, autoFilter=False,
         formatCells=False, formatColumns=False, formatRows=False)
 
-    red = PatternFill('solid', fgColor='E53935')   # solid red cell = "leave this blank"
+    red = PatternFill(start_color='E53935', end_color='E53935', fill_type='solid')   # solid red cell
     redfont = Font(name='Arial', size=10, color='FFFFFF')
     ws.conditional_formatting.add(f'V2:X{last}',
         FormulaRule(formula=['$U2<>""'], fill=red, font=redfont, stopIfTrue=False))
