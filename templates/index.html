@@ -7,359 +7,67 @@
   <link rel="icon" href="data:,">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f4f5f4;
-      min-height: 100vh;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding: 48px 16px;
-    }
-
-    .container {
-      width: 100%;
-      max-width: 560px;
-    }
-
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 32px;
-    }
-
-    .logo-mark {
-      width: 32px;
-      height: 32px;
-      background: #375623;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .logo-mark svg { width: 18px; height: 18px; fill: #fff; }
-
-    .logo-text {
-      font-size: 15px;
-      font-weight: 600;
-      color: #1a1a1a;
-      letter-spacing: -0.2px;
-    }
-
-    .logo-sub {
-      font-size: 12px;
-      color: #888;
-      margin-top: 1px;
-    }
-
-    .card {
-      background: #fff;
-      border-radius: 14px;
-      border: 1px solid #e8e8e6;
-      padding: 28px;
-      margin-bottom: 16px;
-    }
-
-    .section-label {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.6px;
-      text-transform: uppercase;
-      color: #888;
-      margin-bottom: 16px;
-    }
-
-    /* Drop zone */
-    .drop-zone {
-      border: 1.5px dashed #d0d0cc;
-      border-radius: 10px;
-      padding: 32px 20px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
-      background: #fafafa;
-    }
-
-    .drop-zone:hover, .drop-zone.drag-over {
-      border-color: #375623;
-      background: #f0f4ee;
-    }
-
-    .drop-zone.has-file {
-      border-style: solid;
-      border-color: #375623;
-      background: #f0f4ee;
-    }
-
-    .drop-icon {
-      width: 36px;
-      height: 36px;
-      margin: 0 auto 12px;
-      background: #eef2eb;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f4f5f4; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px; }
+    .container { width: 100%; max-width: 560px; }
+    .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 32px; }
+    .logo-text { font-size: 15px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.2px; }
+    .card { background: #fff; border-radius: 14px; border: 1px solid #e8e8e6; padding: 28px; margin-bottom: 16px; }
+    .section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #888; margin-bottom: 16px; }
+    .drop-zone { border: 1.5px dashed #d0d0cc; border-radius: 10px; padding: 32px 20px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; background: #fafafa; }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #375623; background: #f0f4ee; }
+    .drop-zone.has-file { border-style: solid; border-color: #375623; background: #f0f4ee; }
+    .drop-icon { width: 36px; height: 36px; margin: 0 auto 12px; background: #eef2eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
     .drop-icon svg { width: 18px; height: 18px; stroke: #375623; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-
-    .drop-title {
-      font-size: 14px;
-      font-weight: 500;
-      color: #1a1a1a;
-      margin-bottom: 4px;
-    }
-
-    .drop-sub {
-      font-size: 12px;
-      color: #999;
-    }
-
-    .drop-filename {
-      font-size: 13px;
-      font-weight: 500;
-      color: #375623;
-      margin-top: 8px;
-    }
-
-    /* Cash input */
-    .input-row {
-      display: flex;
-      align-items: center;
-      border: 1px solid #e0e0dc;
-      border-radius: 8px;
-      overflow: hidden;
-      height: 40px;
-      width: 220px;
-      transition: border-color 0.15s;
-    }
-
+    .drop-title { font-size: 14px; font-weight: 500; color: #1a1a1a; margin-bottom: 4px; }
+    .drop-sub { font-size: 12px; color: #999; }
+    .drop-filename { font-size: 13px; font-weight: 500; color: #375623; margin-top: 8px; }
+    .input-row { display: flex; align-items: center; border: 1px solid #e0e0dc; border-radius: 8px; overflow: hidden; height: 40px; width: 220px; transition: border-color 0.15s; }
     .input-row:focus-within { border-color: #375623; }
-
-    .input-prefix {
-      padding: 0 12px;
-      font-size: 14px;
-      color: #999;
-      background: #f7f7f5;
-      border-right: 1px solid #e0e0dc;
-      height: 100%;
-      display: flex;
-      align-items: center;
-    }
-
-    .input-row input {
-      border: none;
-      outline: none;
-      font-size: 14px;
-      padding: 0 12px;
-      width: 100%;
-      height: 100%;
-      background: transparent;
-      color: #1a1a1a;
-    }
-
-    input[type=number]::-webkit-inner-spin-button,
-    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
-
-    /* Buttons */
-    .btn-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 24px;
-    }
-
-    .btn {
-      height: 38px;
-      padding: 0 20px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      border: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      transition: opacity 0.15s, background 0.15s;
-    }
-
-    .btn-primary {
-      background: #375623;
-      color: #fff;
-    }
-
+    .input-prefix { padding: 0 12px; font-size: 14px; color: #999; background: #f7f7f5; border-right: 1px solid #e0e0dc; height: 100%; display: flex; align-items: center; }
+    .input-row input { border: none; outline: none; font-size: 14px; padding: 0 12px; width: 100%; height: 100%; background: transparent; color: #1a1a1a; }
+    input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .btn-row { display: flex; gap: 10px; margin-top: 24px; }
+    .btn { height: 38px; padding: 0 20px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; display: inline-flex; align-items: center; gap: 7px; transition: opacity 0.15s, background 0.15s; }
+    .btn-primary { background: #375623; color: #fff; }
     .btn-primary:hover:not(:disabled) { background: #2d4720; }
     .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
-
-    .btn-ghost {
-      background: transparent;
-      color: #666;
-      border: 1px solid #e0e0dc;
-    }
-
+    .btn-ghost { background: transparent; color: #666; border: 1px solid #e0e0dc; }
     .btn-ghost:hover { background: #f4f5f4; color: #333; }
-
     .btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
-    /* Verification banner */
-    .verification {
-      display: none;
-      border-radius: 10px;
-      padding: 14px 16px;
-      display: none;
-      align-items: center;
-      gap: 12px;
-      margin-top: 16px;
-    }
-
-    .verification.match {
-      background: #edf7ed;
-      border: 1px solid #b6ddb6;
-    }
-
-    .verification.no-match {
-      background: #fdecea;
-      border: 1px solid #f5b8b4;
-    }
-
-    .verify-icon {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
+    .verification { display: none; border-radius: 10px; padding: 14px 16px; align-items: center; gap: 12px; margin-top: 16px; }
+    .verification.match { background: #edf7ed; border: 1px solid #b6ddb6; }
+    .verification.no-match { background: #fdecea; border: 1px solid #f5b8b4; }
+    .verify-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .match .verify-icon { background: #c6ecc6; }
     .no-match .verify-icon { background: #fbd0cc; }
-
     .verify-icon svg { width: 16px; height: 16px; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
     .match .verify-icon svg { stroke: #2d7a2d; }
     .no-match .verify-icon svg { stroke: #c0392b; }
-
-    .verify-label {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 2px;
-    }
-
+    .verify-label { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
     .match .verify-label { color: #2d7a2d; }
     .no-match .verify-label { color: #c0392b; }
-
-    .verify-detail {
-      font-size: 12px;
-      color: #666;
-    }
-
-    /* Summary cards */
-    .summary-cards {
-      display: none;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-      margin-top: 16px;
-    }
-
-    .summary-card {
-      background: #f7f8f6;
-      border-radius: 10px;
-      padding: 14px 16px;
-      border: 1px solid #eaeae6;
-    }
-
-    .summary-card-label {
-      font-size: 11px;
-      color: #999;
-      margin-bottom: 6px;
-      font-weight: 500;
-    }
-
-    .summary-card-value {
-      font-size: 18px;
-      font-weight: 600;
-      color: #1a1a1a;
-      letter-spacing: -0.3px;
-    }
-
-    /* Downloads */
-    .downloads {
-      display: none;
-    }
-
-    .download-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 0;
-      border-bottom: 1px solid #f0f0ec;
-    }
-
+    .verify-detail { font-size: 12px; color: #666; }
+    .summary-cards { display: none; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+    .summary-card { background: #f7f8f6; border-radius: 10px; padding: 14px 16px; border: 1px solid #eaeae6; }
+    .summary-card-label { font-size: 11px; color: #999; margin-bottom: 6px; font-weight: 500; }
+    .summary-card-value { font-size: 18px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.3px; }
+    .downloads { display: none; }
+    .download-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0ec; }
     .download-item:last-child { border-bottom: none; }
-
     .download-info { display: flex; align-items: center; gap: 10px; }
-
-    .download-file-icon {
-      width: 32px;
-      height: 32px;
-      background: #eef2eb;
-      border-radius: 7px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
+    .download-file-icon { width: 32px; height: 32px; background: #eef2eb; border-radius: 7px; display: flex; align-items: center; justify-content: center; }
     .download-file-icon svg { width: 16px; height: 16px; stroke: #375623; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-
     .download-name { font-size: 13px; font-weight: 500; color: #1a1a1a; }
     .download-type { font-size: 11px; color: #999; margin-top: 2px; }
-
-    .btn-download {
-      height: 32px;
-      padding: 0 14px;
-      border-radius: 7px;
-      font-size: 12px;
-      font-weight: 500;
-      background: #375623;
-      color: #fff;
-      border: none;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      text-decoration: none;
-      transition: background 0.15s;
-    }
-
+    .btn-download { height: 32px; padding: 0 14px; border-radius: 7px; font-size: 12px; font-weight: 500; background: #375623; color: #fff; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; transition: background 0.15s; }
     .btn-download:hover { background: #2d4720; }
     .btn-download svg { width: 13px; height: 13px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-
-    /* QBO push buttons */
-    .push-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
+    .push-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
     .push-row .btn { min-width: 230px; justify-content: center; }
-
-    .btn-done {
-      background: #eaf1e6;
-      color: #375623;
-      border: 1px solid #cfe0c4;
-      cursor: default;
-      opacity: 1;
-    }
-
+    .btn-done { background: #eaf1e6; color: #375623; border: 1px solid #cfe0c4; cursor: default; opacity: 1; }
     .push-status { font-size: 12px; line-height: 1.4; }
     .push-status.ok  { color: #2d7a2d; }
     .push-status.err { color: #c0392b; }
-
-    /* Spinner */
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner { animation: spin 0.8s linear infinite; display: inline-block; }
   </style>
@@ -373,7 +81,7 @@
     </div>
   </div>
 
-  <!-- Step 1: Prepare review file -->
+  <!-- Zone 1: Prepare review file -->
   <div class="card">
     <div class="section-label">Zone 1 (optional) - upload the applied payments report from TicketVault exactly as it comes. Then download the output file for subsequent review and upload into Zone 2.</div>
     <div class="drop-zone" id="z1DropZone"
@@ -394,12 +102,16 @@
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         <span id="z1BtnText">Generate Review File</span>
       </button>
+      <button class="btn btn-ghost" onclick="clearZone1()">
+        <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+        Clear &amp; reset
+      </button>
     </div>
   </div>
 
   <!-- Upload card -->
   <div class="card">
-    <div class="section-label">Zone 2 (Required) - Upload the reviewed output file from Zone 1, or the traditional file we've used until now.</div>
+    <div class="section-label">Zone 2 (Required) — Upload the reviewed output file from Zone 1, or the traditional file we've used until now.</div>
 
     <div class="drop-zone" id="dropZone"
          onclick="document.getElementById('fileInput').click()"
@@ -454,7 +166,6 @@
       </button>
     </div>
 
-    <!-- Verification -->
     <div class="verification" id="verification">
       <div class="verify-icon">
         <svg id="verifyIconSvg" viewBox="0 0 24 24"></svg>
@@ -465,7 +176,6 @@
       </div>
     </div>
 
-    <!-- Summary cards -->
     <div class="summary-cards" id="summaryCards">
       <div class="summary-card">
         <div class="summary-card-label">Receive payment</div>
@@ -600,7 +310,7 @@
     return '$' + parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  // ── Step 1: build the review workbook ───────────────────────────────
+  // Zone 1: build the review workbook
   let z1File = null;
   function onZ1DragOver(e){ e.preventDefault(); document.getElementById('z1DropZone').classList.add('drag-over'); }
   function onZ1DragLeave(e){ document.getElementById('z1DropZone').classList.remove('drag-over'); }
@@ -646,7 +356,7 @@
       alert('Error: ' + e.message);
     } finally {
       btn.disabled = false;
-      btnText.textContent = 'Generate review file';
+      btnText.textContent = 'Generate Review File';
     }
   }
 
@@ -679,8 +389,7 @@
     document.getElementById('dropFilename').textContent = f.name;
 
     const lname = f.name.toLowerCase();
-    const isXlsx = lname.endsWith('.xlsx');          // filled review file (new path)
-    // EvoPay only applies to the old CSV TicketEvolution path
+    const isXlsx = lname.endsWith('.xlsx');
     const isTE = !isXlsx && lname.includes('ticketevolution');
     document.getElementById('evoPaySection').style.display = isTE ? 'block' : 'none';
     document.getElementById('cashReceivedSection').style.display = isTE ? 'none' : 'block';
@@ -781,16 +490,13 @@
       sessionId = data.session_id;
       combinedTotal = data.combined_total;
 
-      // Summary cards
       document.getElementById('cardRP').textContent = fmt(data.receive_payment_amt);
       document.getElementById('cardBD').textContent = fmt(data.bank_deposit_total);
       document.getElementById('cardTotal').textContent = fmt(data.combined_total);
       document.getElementById('summaryCards').style.display = 'grid';
 
-      // Verification
       showVerification();
 
-      // Downloads
       document.getElementById('appliedName').textContent = data.file_prefix + ' Applied Payments.xlsx';
       document.getElementById('depositName').textContent = data.file_prefix + ' Bank Deposit.xlsx';
       document.getElementById('appliedLink').href = '/download/' + sessionId + '/applied';
@@ -804,7 +510,6 @@
       }
       document.getElementById('downloadsCard').style.display = 'block';
 
-      // Store summary data for push and reset the push buttons to a fresh state
       qboSummaryData = {
         deposit: { deposit_rows: data.deposit_rows || [] },
         receive: { rp_rows: data.rp_rows || [] }
@@ -813,14 +518,12 @@
       document.getElementById('pushButtonsSection').style.display = 'flex';
       resetPushButtons();
 
-      // Google Sheet card (only if the server has it configured)
       if (gsheetsConfigured) {
         document.getElementById('gsheetsCard').style.display = 'block';
         resetSheetsButton();
       } else {
         document.getElementById('gsheetsCard').style.display = 'none';
       }
-
 
       btnText.textContent = 'Process file';
       btn.disabled = false;
@@ -832,7 +535,6 @@
     }
   }
 
-  // ── QBO integration ─────────────────────────────────────────────────────────
   let qboSummaryData = null;
   let qboAdminGate = false;
 
@@ -856,7 +558,7 @@
     let url = '/qbo/connect?session_id=' + (sessionId || '');
     if (qboAdminGate) {
       const key = prompt('Enter the admin password to connect QuickBooks:');
-      if (key === null) return;            // cancelled
+      if (key === null) return;
       url += '&admin_key=' + encodeURIComponent(key);
     }
     window.location.href = url;
@@ -866,7 +568,7 @@
     const body = {};
     if (qboAdminGate) {
       const key = prompt('Enter the admin password to disconnect QuickBooks:');
-      if (key === null) return;            // cancelled
+      if (key === null) return;
       body.admin_key = key;
     }
     const resp = await fetch('/qbo/disconnect', {
@@ -935,7 +637,6 @@
       const errors = data.errors || [];
 
       if (resp.ok && data.ok && errors.length === 0) {
-        // Success — lock the button so the same entry can't be sent twice
         const n = (data.results || []).length;
         btn.className = 'btn btn-done';
         btn.innerHTML = '✓ ' + cfg.label + ' pushed';
@@ -943,7 +644,6 @@
         statusEl.className = 'push-status ok';
         statusEl.textContent = 'Sent ' + n + ' entr' + (n === 1 ? 'y' : 'ies') + ' to QuickBooks.';
       } else {
-        // Failed — leave the button active so it can be retried
         const msgs = errors.length ? errors.map(e => e.error) : [data.error || 'Something went wrong.'];
         statusEl.className = 'push-status err';
         statusEl.textContent = msgs.join(' · ');
@@ -958,7 +658,6 @@
     }
   }
 
-  // ── Google Sheets ───────────────────────────────────────────────────────────
   async function checkSheetsStatus() {
     try {
       const resp = await fetch('/gsheets/status');
@@ -994,7 +693,6 @@
       });
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && data.ok) {
-        // Lock the button so the same rows can't be appended twice
         btn.className = 'btn btn-done';
         btn.innerHTML = '✓ Pushed to Google Sheet Ledgers';
         btn.disabled = true;
@@ -1027,7 +725,6 @@
     }
   }
 
-  // Check QBO status on page load and after OAuth redirect
   checkQBOStatus();
   checkSheetsStatus();
   const urlParams = new URLSearchParams(window.location.search);
@@ -1061,7 +758,7 @@
     document.getElementById('evoPayDropFilename').textContent = '';
     document.getElementById('cashInput').value = '';
     document.getElementById('dropZone').className = 'drop-zone';
-    document.getElementById('dropTitle').textContent = 'Drag & drop the TicketVault applied payments report here.';
+    document.getElementById('dropTitle').textContent = 'Drag & drop either report here (.xlsx or .csv).';
     document.getElementById('dropSub').textContent = 'or click to browse';
     document.getElementById('dropFilename').textContent = '';
     document.getElementById('processBtn').disabled = true;
@@ -1077,6 +774,19 @@
     resetPushButtons();
     document.getElementById('gsheetsCard').style.display = 'none';
     resetSheetsButton();
+
+    clearZone1();
+  }
+
+  function clearZone1() {
+    z1File = null;
+    document.getElementById('z1Input').value = '';
+    document.getElementById('z1DropZone').className = 'drop-zone';
+    document.getElementById('z1DropTitle').textContent = 'Drag & drop the raw report here (.csv).';
+    document.getElementById('z1DropSub').textContent = 'or click to browse';
+    document.getElementById('z1DropFilename').textContent = '';
+    document.getElementById('z1BtnText').textContent = 'Generate Review File';
+    document.getElementById('z1Btn').disabled = true;
   }
 </script>
 </body>
