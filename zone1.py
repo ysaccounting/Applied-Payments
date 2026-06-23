@@ -322,9 +322,10 @@ def _build_guidelines_tab(wb):
              TextBlock(_if(), " cancel out the order from TicketVault.\n"
                               ">Discounts are to compensate the buyers for wrong tickets delivered so that they "
                               "won't cancel the sale. Includes shipping fees too.\n"
+                              '  The networks might notate these as "discount" or "alternative tickets" etc.\n'
                               ">Amounts should be relatively small compared to the sales price."),
          ]),
-         63.75),
+         78.75),
         (13, _YEL,
          title_cell('Problem Order, and Already Paid? = No', '(the full chargeback amount is a cancellation fee)'),
          '>"-Fee" is added to the Company name so that it\'s treated as a cancellation fee.\n'
