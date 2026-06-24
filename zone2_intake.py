@@ -9,6 +9,7 @@ Answer columns (Zone-1 layout, fixed positions):
 
 Order-Tag actions applied to FLAGGED rows (see the Guidelines tab):
     Cancelled Event ............ no change (payout recoup, no fee)
+    Mutual Cancellation ........ no change (payout recoup, no fee)
     Discount ................... Company := Company + "-Fee"
     Problem Order, Paid? = No .. Company := Company + "-Fee"
     Problem Order, Paid? = Yes . SPLIT into two negative lines:
@@ -27,8 +28,8 @@ Blocks (raise ValueError) — matching the "What blocks Zone 2 processing"
 list at the bottom of the Guidelines tab:
     1. Any highlighted row without an Order Tag assigned
     2. A Problem Order row with no answer for Already Paid?
-    3. A Problem Order or Cancelled Event row that doesn't say Yes for Cancelled Out?
-    4. A Problem Order or Cancelled Event row that doesn't have a cancellation reason
+    3. A Problem Order / Cancelled Event / Mutual Cancellation row not marked Yes for Cancelled Out?
+    4. A Problem Order / Cancelled Event / Mutual Cancellation row with no cancellation reason
     5. A More Than One Invoice row that doesn't say Yes for Cancelled Old / Paid New?
 """
 import os
@@ -152,16 +153,16 @@ def read_filled_zone1(xlsx_path, original_filename):
             continue                          # nothing else to validate without a tag
         if tag == 'Problem Order' and paid == '':
             paid_err.append(f"row {r} (Order# {order or 'blank'})")
-        if tag in ('Problem Order', 'Cancelled Event') and cancelled != 'Yes':
+        if tag in ('Problem Order', 'Cancelled Event', 'Mutual Cancellation') and cancelled != 'Yes':
             cancelled_err.append(f"row {r} (Order# {order or 'blank'}, {tag})")
-        if tag in ('Problem Order', 'Cancelled Event') and reason == '':
+        if tag in ('Problem Order', 'Cancelled Event', 'Mutual Cancellation') and reason == '':
             reason_err.append(f"row {r} (Order# {order or 'blank'}, {tag})")
         if tag == 'More Than One Invoice' and old_new != 'Yes':
             mti_err.append(f"row {r} (Order# {order or 'blank'})")
 
         # ── transformation by Order Tag ──────────────────────────────────────
-        if tag == 'Cancelled Event':
-            out_rows.append(base)
+        if tag in ('Cancelled Event', 'Mutual Cancellation'):
+            out_rows.append(base)             # nothing changes on the row
         elif tag == 'Discount':
             base['Company'] = company + '-Fee'
             out_rows.append(base)

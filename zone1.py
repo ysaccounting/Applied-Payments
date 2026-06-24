@@ -34,9 +34,12 @@ FILL_MTI        = 'FFDEEBF7'   # status "Skipped Found more than one invoice ...
 
 # Order-Tag default cancellation reasons (shown in column W when not prefilled).
 TAG_DEFAULT_REASON = {
-    'Cancelled Event': 'Event Cancelled/ Postponed - NA',
-    'Problem Order':   'Cancelled by Marketplace - BR',
+    'Cancelled Event':     'Event Cancelled/Postponed - NA',
+    'Problem Order':       'Cancelled by Marketplace - BR',
+    'Mutual Cancellation': 'Mutually Cancelled - BR',
 }
+# Tags whose Already Paid? column should default to Yes.
+ALREADY_PAID_YES_TAGS = ('Cancelled Event', 'Mutual Cancellation')
 
 
 def _realign(fields):
@@ -111,7 +114,8 @@ def _tab_name(input_path):
 # Order Tags offered on every network, plus tags that only occur on one network's
 # reports (per the Guidelines tab — StubHub Loan, TradeDesk Fees, Due from/to
 # TickPick only ever show up on StubHub / TicketsNow / TickPick reports).
-ORDER_TAGS_BASE = ['Cancelled Event', 'Discount', 'More Than One Invoice', 'Not Found', 'Problem Order']
+ORDER_TAGS_BASE = ['Cancelled Event', 'Discount', 'More Than One Invoice', 'Mutual Cancellation',
+                   'Not Found', 'Problem Order']
 NETWORK_TAGS = {              # substring of the normalised network key -> extra tag
     'stubhub':    'StubHub Loan',
     'tickpick':   'Due from/to TickPick',
@@ -199,9 +203,11 @@ def generate_review_workbook(input_path):
                 # No TV reason yet — show a tag-based default once a tag is chosen.
                 ws.cell(row=ri, column=W,
                         value=(f'=IF($T{ri}="Cancelled Event","{TAG_DEFAULT_REASON["Cancelled Event"]}",'
-                               f'IF($T{ri}="Problem Order","{TAG_DEFAULT_REASON["Problem Order"]}",""))'))
-            # Already Paid? defaults to Yes for cancelled events.
-            ws.cell(row=ri, column=V, value=f'=IF($T{ri}="Cancelled Event","Yes","")')
+                               f'IF($T{ri}="Problem Order","{TAG_DEFAULT_REASON["Problem Order"]}",'
+                               f'IF($T{ri}="Mutual Cancellation","{TAG_DEFAULT_REASON["Mutual Cancellation"]}","")))'))
+            # Already Paid? defaults to Yes for cancelled events and mutual cancellations.
+            paid_cond = ','.join(f'$T{ri}="{t}"' for t in ALREADY_PAID_YES_TAGS)
+            ws.cell(row=ri, column=V, value=f'=IF(OR({paid_cond}),"Yes","")')
 
     last = len(rows) + 1
 
@@ -310,10 +316,10 @@ def _build_guidelines_tab(wb):
     rows = [
         (11, _YEL,
          title_cell('Cancelled Event', '(the full chargeback amount is a payout recoup with no cancellation fee)'),
-         '>Nothing changes on the row. If the order was not already cancelled out from TicketVault,\n'
-         '  then cancel it and put Yes in Cancelled Out? Column and a reason in Cancellation Reason column.\n'
-         '>Use "Event Cancelled/ Postponed - NA" for the cancellation reason in TicketVault and in Column W.',
-         60.0),
+         '>Nothing changes on the row.\n'
+         '>If the order was not already cancelled out from TicketVault, then cancel it and put Yes in Cancelled Out? Column.\n'
+         '>Use "Event Cancelled/Postponed - NA" for the cancellation reason in TicketVault.',
+         44.25),
         (12, _YEL,
          title_cell('Discount', '(the full chargeback amount is a cancellation fee — other three columns blacked out)'),
          CellRichText([
@@ -327,43 +333,47 @@ def _build_guidelines_tab(wb):
          ]),
          78.75),
         (13, _YEL,
+         title_cell('Mutual Cancellation', '(the full chargeback amount is a payout recoup with no cancellation fee)'),
+         '>Nothing changes on the row.\n'
+         '>If the order was not already cancelled out from TicketVault, then cancel it and put Yes in Cancelled Out? Column.\n'
+         '>Use "Mutually Cancelled - BR" for the cancellation reason in TicketVault.',
+         44.25),
+        (14, _YEL,
          title_cell('Problem Order, and Already Paid? = No', '(the full chargeback amount is a cancellation fee)'),
          '>"-Fee" is added to the Company name so that it\'s treated as a cancellation fee.\n'
-         '>If the order was not already cancelled out from TicketVault, then cancel it and put Yes in Cancelled Out? column\n'
-         '  and a reason in Cancellation Reason column.\n'
-         '>Use "Cancelled by Marketplace - BR" for the cancellation reason in TicketVault and in Column W.',
-         72.0),
-        (14, _YEL,
+         '>If the order was not already cancelled out from TicketVault, then cancel it and put Yes in Cancelled Out? column.\n'
+         '>Use "Cancelled by Marketplace - BR" for the cancellation reason in TicketVault.',
+         56.25),
+        (15, _YEL,
          title_cell('Problem Order, and Already Paid? = Yes', '(the chargeback amount is a payout recoup + cancellation fee)'),
          '>The row is split into two negative lines:\n'
          '    Line 1 = the Payout amount, as a negative, with the original Company.\n'
          '    Line 2 = the remainder, under the Company with "-Fee" added so that it\'s treated as a cancellation fee.\n'
          '    These two lines add back to the original Amount.\n'
-         '>If the order was not already cancelled out from TicketVault, then cancel it and put Yes in Cancelled Out? column\n'
-         '  and a reason in Cancellation Reason column.\n'
-         '>Use "Cancelled by Marketplace - BR" for the cancellation reason in TicketVault and in Column W.',
-         105.75),
-        (15, _YEL,
+         '>If the order was not already cancelled out from TicketVault, then cancel it and put Yes in Cancelled Out? column.\n'
+         '>Use "Cancelled by Marketplace - BR" for the cancellation reason in TicketVault.',
+         76.5),
+        (16, _YEL,
          title_cell('StubHub Loan', '(daily loan repayments from Y&S to StubHub)'),
          '>Replaces the Company and only displays on StubHub reports. No further action required.\n'
          '>Repayments are assigned to random amounts and order numbers (sometimes for tens of thousands of dollars per order) and will not\n'
          '  show signs of being problem orders when searched in Gmail.',
-         93.0),
-        (16, _YEL,
+         51.0),
+        (17, _YEL,
          title_cell('TradeDesk Fees', '(monthly fulfillment fees paid from Y&S to TicketsNow)'),
          '>Replaces the Company with Other Fees and only displays on TicketsNow reports. No further action required.\n'
          '>Shows up as Not Found chargeback with no order #, and usually for tens of thousands of dollars.',
-         63.0),
-        (17, _PEACH,
+         25.5),
+        (18, _PEACH,
          title_cell('Due from/to TickPick', '(monthly repayment to Y&S for theft loss)'),
          '>Replaces the Company and only displays on TickPick reports. No further action required.\n'
          '>Shows up as Not Found payment, but hopefully with order # DueFromTickPick.',
          30.0),
-        (18, _PEACH,
+        (19, _PEACH,
          title_cell('Not Found', '(orders with status "Skipped Invoice Not Found")'),
          '>Replaces the Company. No further action required.',
          30.0),
-        (19, _BLUE,
+        (20, _BLUE,
          title_cell('More Than One Invoice',
                     '(orders with status "Skipped Found more than one invoice with this Ext Order Number and Client")'),
          '>Cancel the older invoice in TicketVault and mark paid the newer invoice in TicketVault, then put Yes in Column X.\n'
@@ -376,22 +386,22 @@ def _build_guidelines_tab(wb):
         rs.row_dimensions[r].height = h
 
     # Blocking conditions
-    rs['A21'] = 'What blocks Zone 2 processing'
-    rs['A21'].font = Font(name='Arial', size=11, bold=True, color='FF9C0006')
+    rs['A22'] = 'What blocks Zone 2 processing'
+    rs['A22'].font = Font(name='Arial', size=11, bold=True, color='FF9C0006')
     blocks = [
         'Any highlighted row without an Order Tag assigned',
-        'A Problem Order row with no answer for Already Paid?',
-        "A Problem Order or Cancelled Event row that doesn't say Yes for Cancelled Out?",
-        "A Problem Order or Cancelled Event row that doesn't have a cancellation reason filled in",
+        'A Problem Order row without an answer for Already Paid?',
+        "A Problem Order or Cancelled Event or Mutual Cancellation row that doesn't say Yes for Cancelled Out?",
+        "A Problem Order or Cancelled Event or Mutual Cancellation row that doesn't have a cancellation reason filled in",
         "A More Than One Invoice row that doesn't say Yes for Cancelled Old / Paid New?",
     ]
-    r = 22
+    r = 23
     for b in blocks:
         c = rs.cell(row=r, column=1, value='\u2022  ' + b)
         c.font = FONT; c.alignment = wrapTop
         rs.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
         r += 1
-    rs.merge_cells(start_row=27, start_column=1, end_row=27, end_column=2)
+    rs.merge_cells(start_row=28, start_column=1, end_row=28, end_column=2)
 
     rs.column_dimensions['A'].width = 83.33
     rs.column_dimensions['B'].width = 113.0
