@@ -790,14 +790,18 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
     for col_idx, w in enumerate(SUM_WIDTHS, 1):
         ws_sum.column_dimensions[get_column_letter(col_idx)].width = w
 
-    # Data tabs
+    # Data tabs. Y&S and Affiliates are always present; StubHub Loan and Other
+    # appear only when they actually have rows.
     tab_data = {
         "Y&S": ys_df[DATA_COLS].reset_index(drop=True),
         "Affiliates": affiliates_df[DATA_COLS].reset_index(drop=True),
         "StubHub Loan": stubhub_df[DATA_COLS].reset_index(drop=True),
         "Other": other_df[DATA_COLS].reset_index(drop=True),
     }
+    optional_tabs = {"StubHub Loan", "Other"}
     for tab_name, df in tab_data.items():
+        if tab_name in optional_tabs and df.empty:
+            continue
         ws = wb1.create_sheet(tab_name)
         style_data_tab(ws, df)
 

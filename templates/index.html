@@ -151,6 +151,13 @@
         <div class="input-prefix">$</div>
         <input type="number" id="cashInput" placeholder="0.00" step="0.01" min="0" oninput="onCashInput()">
       </div>
+      <div id="usdReceivedSection" style="display:none; margin-top: 16px;">
+        <div class="section-label">Converted USD received</div>
+        <div class="input-row">
+          <div class="input-prefix">$</div>
+          <input type="number" id="usdInput" placeholder="0.00" step="0.01" min="0" oninput="onCashInput()">
+        </div>
+      </div>
     </div>
 
     <p style="font-size: 15px; font-weight: 700; color: #e00000; margin-top: 16px; letter-spacing: 0.3px;">IF NOT USING ZONE 1, MAKE SURE TO USE COLUMN S FOR REASON AND INPUT THE RELEVANT NOTES FOR CHARGEBACKS FIRST.</p>
@@ -173,6 +180,16 @@
       <div>
         <div class="verify-label" id="verifyLabel"></div>
         <div class="verify-detail" id="verifyDetail"></div>
+      </div>
+    </div>
+
+    <div class="verification match" id="fxInfo" style="display:none;">
+      <div class="verify-icon">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div>
+        <div class="verify-label">CAD → USD conversion</div>
+        <div class="verify-detail" id="fxInfoDetail"></div>
       </div>
     </div>
 
@@ -206,36 +223,6 @@
         </div>
       </div>
       <a class="btn-download" id="appliedLink" href="#">
-        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Download
-      </a>
-    </div>
-    <div class="download-item">
-      <div class="download-info">
-        <div class="download-file-icon">
-          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        </div>
-        <div>
-          <div class="download-name" id="depositName">Bank Deposit</div>
-          <div class="download-type">QBO import file</div>
-        </div>
-      </div>
-      <a class="btn-download" id="depositLink" href="#">
-        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Download
-      </a>
-    </div>
-    <div class="download-item" id="receivePaymentDownload" style="display:none;">
-      <div class="download-info">
-        <div class="download-file-icon">
-          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        </div>
-        <div>
-          <div class="download-name" id="receiveName">Receive Payment</div>
-          <div class="download-type">QBO import file</div>
-        </div>
-      </div>
-      <a class="btn-download" id="receiveLink" href="#">
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download
       </a>
@@ -402,7 +389,8 @@
     document.getElementById('evoPaySection').style.display = isTE ? 'block' : 'none';
     document.getElementById('cashReceivedSection').style.display = isTE ? 'none' : 'block';
     const isCAD = lname.replace(/\s/g, '').includes('(cad)');
-    document.getElementById('cashLabel').textContent = isCAD ? 'Converted USD received' : 'Cash received';
+    document.getElementById('cashLabel').textContent = isCAD ? 'CAD received' : 'Cash received';
+    document.getElementById('usdReceivedSection').style.display = (isCAD && !isTE) ? 'block' : 'none';
     if (!isTE) { evoPayFile = null; }
 
     checkReady();
@@ -445,14 +433,22 @@
 
   function checkReady() {
     const cash = document.getElementById('cashInput').value;
+    const usd = document.getElementById('usdInput').value;
     const lname = selectedFile ? selectedFile.name.toLowerCase() : '';
     const isXlsx = lname.endsWith('.xlsx');
     const isTE = lname.includes('ticketevolution');
-    const ready = selectedFile && (isTE || isXlsx || cash !== '');
+    let ready = selectedFile && (isTE || isXlsx || cash !== '');
+    if (isCadFile()) ready = ready && usd !== '';   // FX needs the converted USD
     document.getElementById('processBtn').disabled = !ready;
   }
 
+  function isCadFile() {
+    const n = selectedFile ? selectedFile.name.toLowerCase().replace(/\s/g, '') : '';
+    return n.includes('(cad)');
+  }
+
   function showVerification() {
+    const _rcv = isCadFile() ? 'CAD received' : 'cash received';
     const cashVal = parseFloat(document.getElementById('cashInput').value);
     if (isNaN(cashVal) || combinedTotal === null) return;
 
@@ -466,23 +462,19 @@
     if (match) {
       icon.innerHTML = '<polyline points="20 6 9 17 4 12"/>';
       document.getElementById('verifyLabel').textContent = 'Amounts match';
-      document.getElementById('verifyDetail').textContent = fmt(cashVal) + ' cash received = ' + fmt(combinedTotal) + ' in entries';
+      document.getElementById('verifyDetail').textContent = fmt(cashVal) + ' ' + _rcv + ' = ' + fmt(combinedTotal) + ' in entries';
     } else {
       icon.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
       document.getElementById('verifyLabel').textContent = "Amounts don't match";
       const diff = cashVal - combinedTotal;
       document.getElementById('verifyDetail').textContent =
-        fmt(cashVal) + ' cash received vs ' + fmt(combinedTotal) + ' in entries (' + (diff > 0 ? '+' : '') + fmt(diff) + ')';
+        fmt(cashVal) + ' ' + _rcv + ' vs ' + fmt(combinedTotal) + ' in entries (' + (diff > 0 ? '+' : '') + fmt(diff) + ')';
     }
   }
 
-  function showFxBreakdown(fx) {
-    const el = document.getElementById('verification');
-    el.style.display = 'flex';
-    el.className = 'verification match';
-    document.getElementById('verifyIconSvg').innerHTML = '<polyline points="20 6 9 17 4 12"/>';
-    document.getElementById('verifyLabel').textContent = 'CAD \u2192 USD conversion';
-    document.getElementById('verifyDetail').textContent =
+  function showFxInfo(fx) {
+    document.getElementById('fxInfo').style.display = 'flex';
+    document.getElementById('fxInfoDetail').textContent =
       fmt(fx.usd_received) + ' USD received \u00b7 ' + fmt(fx.cad_total) + ' CAD total \u00b7 ' +
       fmt(fx.shortfall) + ' FX adjustment allocated pro rata';
   }
@@ -496,8 +488,8 @@
     const formData = new FormData();
     formData.append('file', selectedFile);
     if (evoPayFile) formData.append('evopay_file', evoPayFile);
-    const _cash = document.getElementById('cashInput').value;
-    if (_cash !== '') formData.append('usd_received', _cash);
+    const _usd = document.getElementById('usdInput').value;
+    if (_usd !== '') formData.append('usd_received', _usd);
 
     try {
       const resp = await fetch('/process', { method: 'POST', body: formData });
@@ -518,20 +510,12 @@
       document.getElementById('cardTotal').textContent = fmt(data.combined_total);
       document.getElementById('summaryCards').style.display = 'grid';
 
-      if (data.is_cad && data.fx_journal) { showFxBreakdown(data.fx_journal); }
-      else { showVerification(); }
+      showVerification();
+      if (data.is_cad && data.fx_journal) { showFxInfo(data.fx_journal); }
+      else { document.getElementById('fxInfo').style.display = 'none'; }
 
       document.getElementById('appliedName').textContent = data.file_prefix + ' Applied Payments.xlsx';
-      document.getElementById('depositName').textContent = data.file_prefix + ' Bank Deposit.xlsx';
       document.getElementById('appliedLink').href = '/download/' + sessionId + '/applied';
-      document.getElementById('depositLink').href = '/download/' + sessionId + '/deposit';
-      if (data.has_receive_payment) {
-        document.getElementById('receiveName').textContent = data.file_prefix + ' Receive Payment.xlsx';
-        document.getElementById('receiveLink').href = '/download/' + sessionId + '/receive';
-        document.getElementById('receivePaymentDownload').style.display = 'flex';
-      } else {
-        document.getElementById('receivePaymentDownload').style.display = 'none';
-      }
       document.getElementById('downloadsCard').style.display = 'block';
 
       qboSummaryData = {
@@ -792,18 +776,18 @@
     document.getElementById('evoPayDropSub').textContent = 'CSV or XLSX — or click to browse';
     document.getElementById('evoPayDropFilename').textContent = '';
     document.getElementById('cashInput').value = '';
+    document.getElementById('usdInput').value = '';
+    document.getElementById('usdReceivedSection').style.display = 'none';
     document.getElementById('dropZone').className = 'drop-zone';
     document.getElementById('dropTitle').textContent = 'Drag & drop either report here (.xlsx or .csv).';
     document.getElementById('dropSub').textContent = 'or click to browse';
     document.getElementById('dropFilename').textContent = '';
     document.getElementById('processBtn').disabled = true;
     document.getElementById('verification').style.display = 'none';
+    document.getElementById('fxInfo').style.display = 'none';
     document.getElementById('summaryCards').style.display = 'none';
     document.getElementById('downloadsCard').style.display = 'none';
     document.getElementById('appliedLink').href = '#';
-    document.getElementById('depositLink').href = '#';
-    document.getElementById('receiveLink').href = '#';
-    document.getElementById('receivePaymentDownload').style.display = 'none';
     document.getElementById('pushButtonsSection').style.display = 'none';
     qboSummaryData = null;
     resetPushButtons();
