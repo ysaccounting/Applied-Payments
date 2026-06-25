@@ -10,7 +10,7 @@ from processor import process
 import zone1
 import zone2_intake as z2
 from qbo_auth import get_auth_url, exchange_code, get_valid_token
-from qbo_push import push_bank_deposit, push_receive_payments, get_company_info
+from qbo_push import push_bank_deposit, push_receive_payments, push_fx_journal, get_company_info
 import token_store
 import gsheets
 
@@ -130,6 +130,7 @@ def process_file():
 
     # Handle optional EvoPay file for TicketEvolution uploads (works for both paths).
     evopay_path = None
+    usd_received = request.form.get("usd_received")  # CAD files: USD actually received from the bank conversion
     evopay_file = request.files.get("evopay_file")
     if evopay_file and evopay_file.filename:
         evopay_ext = os.path.splitext(evopay_file.filename)[1].lower()
@@ -139,12 +140,12 @@ def process_file():
     try:
         if use_new_path:
             raw_df, proc_filename, zone1_snapshot = z2.read_filled_zone1(upload_path, f.filename)
-            result = process(None, proc_filename, evopay_path=evopay_path, raw_df=raw_df)
+            result = process(None, proc_filename, evopay_path=evopay_path, raw_df=raw_df, usd_received=usd_received)
         else:
             if not fname_lower.endswith(".csv"):
                 raise ValueError("This .xlsx doesn't look like a Zone 1 review file. "
                                  "Upload the raw report as a .csv, or a filled Zone 1 workbook.")
-            result = process(upload_path, f.filename, evopay_path=evopay_path)
+            result = process(upload_path, f.filename, evopay_path=evopay_path, usd_received=usd_received)
     except Exception as e:
         if os.path.exists(upload_path):
             os.remove(upload_path)
@@ -232,6 +233,8 @@ def process_file():
         "combined_total": result["combined_total"],
         "deposit_rows": deposit_rows_data,
         "rp_rows": rp_rows_data,
+        "is_cad": result.get("is_cad", False),
+        "fx_journal": result.get("fx_journal"),
     })
 
 
@@ -357,6 +360,8 @@ def qbo_push(session_id, push_type):
             results = push_bank_deposit(token_data, realm_id, data)
         elif push_type == "receive":
             results = push_receive_payments(token_data, realm_id, data)
+        elif push_type == "fx":
+            results = push_fx_journal(token_data, realm_id, data)
         else:
             return jsonify({"error": "Invalid push type"}), 400
 

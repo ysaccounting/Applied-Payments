@@ -13,14 +13,14 @@
     .logo-text { font-size: 15px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.2px; }
     .card { background: #fff; border-radius: 14px; border: 1px solid #e8e8e6; padding: 28px; margin-bottom: 16px; }
     .section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #888; margin-bottom: 16px; }
-    .drop-zone { border: 1.5px dashed #d0d0cc; border-radius: 10px; padding: 32px 20px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; background: #EAECF0; }
-    .drop-zone:hover, .drop-zone.drag-over { border-color: #375623; background: #f0f4ee; }
-    .drop-zone.has-file { border-style: solid; border-color: #375623; background: #f0f4ee; }
-    .drop-icon { width: 36px; height: 36px; margin: 0 auto 12px; background: #eef2eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-    .drop-icon svg { width: 18px; height: 18px; stroke: #375623; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .drop-zone { border: 2px dashed #C4C9D8; border-radius: 12px; padding: 32px 20px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; background: #F8F9FC; }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #7B8DB0; background: #F0F3FA; }
+    .drop-zone.has-file { border-style: solid; border-color: #7B8DB0; background: #F0F3FA; }
+    .drop-icon { width: 36px; height: 36px; margin: 0 auto 12px; background: #EAECF0; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .drop-icon svg { width: 18px; height: 18px; stroke: #7B8DB0; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .drop-title { font-size: 14px; font-weight: 500; color: #1a1a1a; margin-bottom: 4px; }
     .drop-sub { font-size: 12px; color: #999; }
-    .drop-filename { font-size: 13px; font-weight: 500; color: #375623; margin-top: 8px; }
+    .drop-filename { font-size: 13px; font-weight: 500; color: #374151; margin-top: 8px; }
     .input-row { display: flex; align-items: center; border: 1px solid #e0e0dc; border-radius: 8px; overflow: hidden; height: 40px; width: 220px; transition: border-color 0.15s; }
     .input-row:focus-within { border-color: #375623; }
     .input-prefix { padding: 0 12px; font-size: 14px; color: #999; background: #f7f7f5; border-right: 1px solid #e0e0dc; height: 100%; display: flex; align-items: center; }
@@ -146,7 +146,7 @@
     </div>
 
     <div style="margin-top: 20px;" id="cashReceivedSection">
-      <div class="section-label">Cash received</div>
+      <div class="section-label" id="cashLabel">Cash received</div>
       <div class="input-row">
         <div class="input-prefix">$</div>
         <input type="number" id="cashInput" placeholder="0.00" step="0.01" min="0" oninput="onCashInput()">
@@ -277,6 +277,13 @@
           </button>
           <span class="push-status" id="receiveStatus"></span>
         </div>
+        <div class="push-row" id="fxPushWrap" style="display:none;">
+          <button class="btn btn-primary" id="pushFxBtn" onclick="pushEntry('fx')">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>
+            Push FX Journal Entry to QBO
+          </button>
+          <span class="push-status" id="fxStatus"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -302,7 +309,7 @@
   let combinedTotal = null;
 
   const PUSH_ICON = '<svg viewBox="0 0 24 24" style="width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/></svg>';
-  const PUSH_LABELS = { deposit: 'Push Bank Deposit to QBO', receive: 'Push Receive Payment to QBO' };
+  const PUSH_LABELS = { deposit: 'Push Bank Deposit to QBO', receive: 'Push Receive Payment to QBO', fx: 'Push FX Journal Entry to QBO' };
   const SHEETS_LABEL = 'Push to Google Sheet Ledgers';
   let gsheetsConfigured = false;
 
@@ -394,6 +401,8 @@
     const isTE = lname.includes('ticketevolution');
     document.getElementById('evoPaySection').style.display = isTE ? 'block' : 'none';
     document.getElementById('cashReceivedSection').style.display = isTE ? 'none' : 'block';
+    const isCAD = lname.replace(/\s/g, '').includes('(cad)');
+    document.getElementById('cashLabel').textContent = isCAD ? 'Converted USD received' : 'Cash received';
     if (!isTE) { evoPayFile = null; }
 
     checkReady();
@@ -467,6 +476,17 @@
     }
   }
 
+  function showFxBreakdown(fx) {
+    const el = document.getElementById('verification');
+    el.style.display = 'flex';
+    el.className = 'verification match';
+    document.getElementById('verifyIconSvg').innerHTML = '<polyline points="20 6 9 17 4 12"/>';
+    document.getElementById('verifyLabel').textContent = 'CAD \u2192 USD conversion';
+    document.getElementById('verifyDetail').textContent =
+      fmt(fx.usd_received) + ' USD received \u00b7 ' + fmt(fx.cad_total) + ' CAD total \u00b7 ' +
+      fmt(fx.shortfall) + ' FX adjustment allocated pro rata';
+  }
+
   async function processFile() {
     const btn = document.getElementById('processBtn');
     const btnText = document.getElementById('processBtnText');
@@ -476,6 +496,8 @@
     const formData = new FormData();
     formData.append('file', selectedFile);
     if (evoPayFile) formData.append('evopay_file', evoPayFile);
+    const _cash = document.getElementById('cashInput').value;
+    if (_cash !== '') formData.append('usd_received', _cash);
 
     try {
       const resp = await fetch('/process', { method: 'POST', body: formData });
@@ -496,7 +518,8 @@
       document.getElementById('cardTotal').textContent = fmt(data.combined_total);
       document.getElementById('summaryCards').style.display = 'grid';
 
-      showVerification();
+      if (data.is_cad && data.fx_journal) { showFxBreakdown(data.fx_journal); }
+      else { showVerification(); }
 
       document.getElementById('appliedName').textContent = data.file_prefix + ' Applied Payments.xlsx';
       document.getElementById('depositName').textContent = data.file_prefix + ' Bank Deposit.xlsx';
@@ -513,8 +536,10 @@
 
       qboSummaryData = {
         deposit: { deposit_rows: data.deposit_rows || [] },
-        receive: { rp_rows: data.rp_rows || [] }
+        receive: { rp_rows: data.rp_rows || [] },
+        fx: data.fx_journal || null
       };
+      document.getElementById('fxPushWrap').style.display = data.fx_journal ? 'flex' : 'none';
       checkQBOStatus();
       document.getElementById('pushButtonsSection').style.display = 'flex';
       resetPushButtons();
@@ -602,6 +627,14 @@
       st.className = 'push-status';
       st.textContent = hasRows[type] ? '' : 'No entries to push.';
     });
+    const fxBtn = document.getElementById('pushFxBtn');
+    if (fxBtn) {
+      const hasFx = !!(qboSummaryData && qboSummaryData.fx);
+      fxBtn.className = 'btn btn-primary';
+      fxBtn.innerHTML = PUSH_ICON + PUSH_LABELS.fx;
+      fxBtn.disabled = !hasFx;
+      const fst = document.getElementById('fxStatus'); fst.className = 'push-status'; fst.textContent = '';
+    }
   }
 
   async function pushEntry(type) {
@@ -610,6 +643,7 @@
     const cfg = {
       deposit: { btn: 'pushDepositBtn', status: 'depositStatus', label: 'Bank Deposit', payload: qboSummaryData.deposit },
       receive: { btn: 'pushReceiveBtn', status: 'receiveStatus', label: 'Receive Payment', payload: qboSummaryData.receive },
+      fx: { btn: 'pushFxBtn', status: 'fxStatus', label: 'FX Journal Entry', payload: qboSummaryData.fx },
     }[type];
 
     const btn = document.getElementById(cfg.btn);

@@ -252,3 +252,80 @@ def push_bank_deposit(token_data: dict, realm_id: str, summary_data: dict) -> li
     for dep_num, dep_id, sync in posted:
         results.append({"status": "ok", "deposit_num": dep_num, "id": dep_id})
     return results
+
+
+def push_fx_journal(token_data: dict, realm_id: str, fx_data: dict) -> list:
+    """
+    Post the CAD->USD conversion as a single QBO Journal Entry.
+
+    fx_data = {
+        "date": "mm/dd/yyyy", "deposit_num": str, "network": str,
+        "usd_received": float, "cad_total": float, "shortfall": float,
+        "lines": [ {"account": <leaf name>, "debit": amt}            # debits
+                   ... , {"account": <leaf name>, "credit": amt} ],  # the CAD credit
+    }
+
+    Resolves every account up front; if any is missing nothing is posted and one
+    clear error is returned (same safety model as the bank-deposit push). Debits
+    must equal credits — the allocation guarantees this.
+    """
+    token_data = get_valid_token(token_data)
+    lines_in = fx_data.get("lines", [])
+    if not lines_in:
+        return [{"status": "error", "deposit_num": fx_data.get("deposit_num", "fx"),
+                 "error": "No FX journal lines to post."}]
+
+    # ── Phase 1: resolve every account; abort without posting if any is missing ──
+    je_lines = []
+    problems = []
+    total_debit = 0.0
+    total_credit = 0.0
+    for ln in lines_in:
+        name = str(ln.get("account", "")).strip()
+        acct = search_account(token_data, realm_id, name) if name else None
+        if not acct:
+            problems.append(f'No account named "{name}" exists in QuickBooks.')
+            continue
+        is_debit = "debit" in ln
+        amount = round(float(ln.get("debit", ln.get("credit", 0)) or 0), 2)
+        if amount == 0:
+            continue
+        if is_debit:
+            total_debit += amount
+        else:
+            total_credit += amount
+        je_lines.append({
+            "DetailType": "JournalEntryLineDetail",
+            "Amount": amount,
+            "Description": fx_data.get("deposit_num", ""),
+            "JournalEntryLineDetail": {
+                "PostingType": "Debit" if is_debit else "Credit",
+                "AccountRef": {"value": acct["Id"], "name": acct["Name"]},
+            },
+        })
+
+    if problems:
+        unique = list(dict.fromkeys(problems))
+        msg = ("FX journal entry not sent — nothing was posted to QuickBooks. "
+               + " ".join(unique) + " Fix this and push again.")
+        return [{"status": "error", "deposit_num": fx_data.get("deposit_num", "fx"), "error": msg}]
+
+    if round(total_debit - total_credit, 2) != 0:
+        return [{"status": "error", "deposit_num": fx_data.get("deposit_num", "fx"),
+                 "error": (f"FX journal entry is out of balance (debits ${total_debit:,.2f} "
+                           f"vs credits ${total_credit:,.2f}) — nothing was posted.")}]
+
+    # ── Phase 2: post the single journal entry ──
+    payload = {
+        "TxnDate": _parse_date(fx_data.get("date", "")),
+        "PrivateNote": f"CAD\u2192USD conversion {fx_data.get('deposit_num', '')}".strip(),
+        "Line": je_lines,
+    }
+    try:
+        result = api_post(token_data, realm_id, "journalentry?minorversion=65", payload)
+        je = result.get("JournalEntry", {})
+        return [{"status": "ok", "deposit_num": fx_data.get("deposit_num", "fx"),
+                 "id": je.get("Id"), "doc_number": je.get("DocNumber")}]
+    except Exception as e:
+        return [{"status": "error", "deposit_num": fx_data.get("deposit_num", "fx"),
+                 "error": humanize_error(e)}]

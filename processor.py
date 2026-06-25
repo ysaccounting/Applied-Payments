@@ -461,7 +461,35 @@ def build_deposit_number(network_display, prefix, remit_date):
     return "_".join(parts)
 
 
-def process(csv_path, filename, evopay_path=None, raw_df=None):
+def _allocate_fx(cad_total, usd_received, affiliate_amts, ys_bucket_amt):
+    """Pro-rata split the CAD->USD shortfall (cad_total - usd_received) across each
+    affiliate line plus a single Y&S bucket (receive payment + cancellation fees +
+    other Y&S money). Returns (affiliate_shares: {broker: amt}, ys_share: float),
+    rounded to cents and summing EXACTLY to the shortfall (residual penny lands on
+    the largest line)."""
+    shortfall = round(cad_total - usd_received, 2)
+    if cad_total <= 0:
+        return {}, 0.0
+    lines = [(b, a) for b, a in affiliate_amts.items()]      # (broker, amount)
+    if round(ys_bucket_amt, 2) != 0:
+        lines.append((None, round(ys_bucket_amt, 2)))        # None -> Foreign Exchange Conversion
+    shares = {key: round(amt / cad_total * shortfall, 2) for key, amt in lines}
+    resid = round(shortfall - sum(shares.values()), 2)
+    if resid and lines:
+        biggest = max(lines, key=lambda kv: abs(kv[1]))[0]
+        shares[biggest] = round(shares[biggest] + resid, 2)
+    aff_shares = {k: v for k, v in shares.items() if k is not None}
+    ys_share = shares.get(None, 0.0)
+    return aff_shares, ys_share
+
+
+# Leaf QBO account names for the CAD->USD conversion journal entry.
+FX_USD_ACCOUNT = "Wise Chkg (USD)"
+FX_CAD_ACCOUNT = "Wise Chkg (CAD)"
+FX_CONVERSION_ACCOUNT = "Foreign Exchange Conversion"
+
+
+def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None):
     if raw_df is not None:
         raw = raw_df.copy()                # new two-zone path: rows already prepared
     else:
@@ -543,7 +571,11 @@ def process(csv_path, filename, evopay_path=None, raw_df=None):
     other_grouped = other_df.groupby("Company")["Amount"].sum().reset_index()
     other_grouped.columns = ["Account", "Amount"]
     ys_cancel_amt = round(ys_df[ys_df["Type"] == "Cancellation Fees"]["Amount"].sum(), 2)
-    cancel_row = pd.DataFrame([{"Account": "Cancellation Fees", "Amount": ys_cancel_amt}])
+    # Only emit a Cancellation Fees line when there actually are fees — otherwise a
+    # $0.00 line shows up on the deposit (and would post a $0 line to QBO). Mirrors
+    # the per-date (TE) path below.
+    cancel_row = (pd.DataFrame([{"Account": "Cancellation Fees", "Amount": ys_cancel_amt}])
+                  if ys_cancel_amt != 0 else pd.DataFrame(columns=["Account", "Amount"]))
 
     deposit_rows = pd.concat([aff_grouped, sh_grouped, other_grouped, cancel_row], ignore_index=True)
     deposit_rows["Amount"] = deposit_rows["Amount"].round(2)
@@ -554,6 +586,70 @@ def process(csv_path, filename, evopay_path=None, raw_df=None):
 
     bank_deposit_total = round(deposit_rows["Amount"].sum(), 2)
     combined_total = round(receive_payment_amt + bank_deposit_total, 2)
+
+    # ── CAD->USD conversion (TicketsNow (CAD) etc.) ──────────────────────────
+    # When the file is a CAD feed and the user supplies the USD actually received
+    # from the bank conversion, allocate the shortfall pro rata: each affiliate
+    # bears its own share (debited to its account); the Y&S bucket (receive
+    # payment + cancellation fees + other Y&S money) goes to Foreign Exchange
+    # Conversion. Produces a balanced QBO journal entry + per-affiliate FX rows
+    # for the Affiliates sheet.
+    is_cad = "(cad)" in network_display.lower() or " cad" in network_display.lower()
+    fx_journal = None
+    fx_detail_rows = []
+    if is_cad and usd_received is not None:
+        try:
+            usd_amt = round(float(usd_received), 2)
+        except (TypeError, ValueError):
+            usd_amt = None
+        cad_total = float(combined_total)
+        if usd_amt is not None and cad_total > 0:
+            affiliate_amts = {str(r["Account"]): round(float(r["Amount"]), 2)
+                              for _, r in aff_grouped.iterrows() if round(float(r["Amount"]), 2) != 0}
+            ys_bucket = float(round(receive_payment_amt
+                              + (sh_grouped["Amount"].sum() if len(sh_grouped) else 0.0)
+                              + (other_grouped["Amount"].sum() if len(other_grouped) else 0.0)
+                              + ys_cancel_amt, 2))
+            aff_shares, ys_share = _allocate_fx(cad_total, usd_amt, affiliate_amts, ys_bucket)
+
+            # QBO journal entry lines (debits then the single CAD credit).
+            # A positive share is borne as a debit; a negative share (a broker or
+            # the Y&S bucket whose net payment was negative) must post as a POSITIVE
+            # CREDIT, never a negative debit. This keeps the entry balanced and the
+            # signs correct on the books.
+            def _fx_line(account, amt):
+                amt = round(amt, 2)
+                if amt >= 0:
+                    return {"account": account, "debit": float(amt)}
+                return {"account": account, "credit": float(-amt)}
+
+            jlines = [{"account": FX_USD_ACCOUNT, "debit": float(usd_amt)}]
+            for broker, share in aff_shares.items():
+                if round(share, 2):
+                    jlines.append(_fx_line(broker, share))
+            if round(ys_share, 2):
+                jlines.append(_fx_line(FX_CONVERSION_ACCOUNT, ys_share))
+            jlines.append({"account": FX_CAD_ACCOUNT, "credit": float(round(cad_total, 2))})
+            fx_journal = {
+                "date": remit_date_str,
+                "deposit_num": short_dep_num,
+                "network": network_display,
+                "usd_received": float(usd_amt),
+                "cad_total": float(round(cad_total, 2)),
+                "shortfall": float(round(cad_total - usd_amt, 2)),
+                "lines": jlines,
+            }
+            # Per-affiliate FX rows for the Affiliates Google Sheet (negative share).
+            for broker, share in aff_shares.items():
+                if round(share, 2):
+                    fx_detail_rows.append({
+                        "Tab": "Affiliates",
+                        "Company": broker, "Date": remit_date_str,
+                        "Network": network_display, "Type": "FX",
+                        "Order#": "", "Amount": float(round(-share, 2)),
+                        "Performer": "", "Venue": "", "EventDate": "",
+                        "Section": "", "Row": "", "Seat": "", "Qty": "", "Reason": "",
+                    })
 
     # ── Determine if this is a TE (per-date) file ────────────────────────────
     is_te = bool(evopay_sale or evopay_cancel)
@@ -727,27 +823,35 @@ def process(csv_path, filename, evopay_path=None, raw_df=None):
     ws_bd.freeze_panes = "A2"
     ws_bd.auto_filter.ref = f"A1:{get_column_letter(len(bd_cols))}1"
 
-    # ── Build Receive Payment workbook (TE only) ──────────────────────────────
-    wb3 = None
+    # ── Build Receive Payment workbook ────────────────────────────────────────
+    # Always produced with its header row so the layout is consistent; a data row
+    # appears only when there's an actual receive payment. A $0 receive payment
+    # yields a headers-only sheet (and nothing is pushed to QBO).
     if is_te:
-        rp_cols = ["Memo", "Amount", "Network", "Date", "Deposit #", "Bank Account"]
-        rp_col_widths = [32, 14, 20, 12, 32, 14]
-        wb3 = openpyxl.Workbook()
-        ws_rp = wb3.active
-        ws_rp.title = "Receive Payment"
-        write_header_row(ws_rp, 1, rp_cols)
-        for i, rp in enumerate(rp_rows):
-            r = 2 + i
-            write_data_cell(ws_rp, r, 1, rp["Deposit #"])
-            write_data_cell(ws_rp, r, 2, rp["Amount"], fmt="#,##0.00", align=ALIGN_CENTER)
-            write_data_cell(ws_rp, r, 3, deposit_network_full, align=ALIGN_CENTER)
-            write_data_cell(ws_rp, r, 4, rp["Date"], align=ALIGN_CENTER)
-            write_data_cell(ws_rp, r, 5, rp["Deposit #"])
-            write_data_cell(ws_rp, r, 6, bank_account, align=ALIGN_CENTER)
-        for col_idx, w in enumerate(rp_col_widths, 1):
-            ws_rp.column_dimensions[get_column_letter(col_idx)].width = w
-        ws_rp.freeze_panes = "A2"
-        ws_rp.auto_filter.ref = f"A1:{get_column_letter(len(rp_cols))}1"
+        rp_rows_wb = rp_rows                      # per-date list, already excludes $0 dates
+    else:
+        rp_rows_wb = ([{"Date": remit_date_str, "Amount": receive_payment_amt,
+                        "Deposit #": short_dep_num}]
+                      if receive_payment_amt != 0 else [])
+
+    rp_cols = ["Memo", "Amount", "Network", "Date", "Deposit #", "Bank Account"]
+    rp_col_widths = [32, 14, 20, 12, 32, 14]
+    wb3 = openpyxl.Workbook()
+    ws_rp = wb3.active
+    ws_rp.title = "Receive Payment"
+    write_header_row(ws_rp, 1, rp_cols)
+    for i, rp in enumerate(rp_rows_wb):
+        r = 2 + i
+        write_data_cell(ws_rp, r, 1, rp["Deposit #"])
+        write_data_cell(ws_rp, r, 2, rp["Amount"], fmt="#,##0.00", align=ALIGN_CENTER)
+        write_data_cell(ws_rp, r, 3, deposit_network_full, align=ALIGN_CENTER)
+        write_data_cell(ws_rp, r, 4, rp["Date"], align=ALIGN_CENTER)
+        write_data_cell(ws_rp, r, 5, rp["Deposit #"])
+        write_data_cell(ws_rp, r, 6, bank_account, align=ALIGN_CENTER)
+    for col_idx, w in enumerate(rp_col_widths, 1):
+        ws_rp.column_dimensions[get_column_letter(col_idx)].width = w
+    ws_rp.freeze_panes = "A2"
+    ws_rp.auto_filter.ref = f"A1:{get_column_letter(len(rp_cols))}1"
 
     # ── Detail rows for Google Sheets (the four data tabs, combined) ──────────
     detail_source = [
@@ -769,6 +873,10 @@ def process(csv_path, filename, evopay_path=None, raw_df=None):
                 rec[col] = v
             detail_rows_data.append(rec)
 
+    # Append the per-affiliate FX rows (CAD files only) so they ride along to the
+    # Affiliates sheet on the normal Google Sheets push.
+    detail_rows_data.extend(fx_detail_rows)
+
     return {
         "wb_applied": wb1,
         "wb_deposit": wb2,
@@ -780,13 +888,12 @@ def process(csv_path, filename, evopay_path=None, raw_df=None):
         "combined_total": combined_total,
         "bank_account": bank_account,
         "deposit_network_full": deposit_network_full,
+        "network_display": network_display,
+        "is_cad": is_cad,
+        "fx_journal": fx_journal,
         # Raw data for QBO push
         "all_bd_rows_data": (all_bd_rows if is_te else deposit_rows).to_dict("records"),
-        "rp_rows_data": rp_rows if is_te else [{
-            "Deposit #": short_dep_num,
-            "Amount": receive_payment_amt,
-            "Date": remit_date_str,
-        }],
+        "rp_rows_data": rp_rows_wb,
         # Detail-tab rows for the Google Sheet append
         "detail_rows_data": detail_rows_data,
     }
