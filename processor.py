@@ -771,12 +771,14 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
     else:
         ws_sum.cell(row=1, column=1, value="Receive Payment").font = SECTION_FONT
         write_header_row(ws_sum, 2, SUM_COLS)
-        write_data_cell(ws_sum, 3, 1, short_dep_num)
-        write_data_cell(ws_sum, 3, 2, receive_payment_amt, fmt="#,##0.00", align=ALIGN_CENTER)
-        write_data_cell(ws_sum, 3, 3, deposit_network_full, align=ALIGN_CENTER)
-        write_data_cell(ws_sum, 3, 4, remit_date_str, align=ALIGN_CENTER)
-        write_data_cell(ws_sum, 3, 5, short_dep_num)
-        write_data_cell(ws_sum, 3, 6, bank_account, align=ALIGN_CENTER)
+        # Header always present; the data row only when there's an actual payment.
+        if receive_payment_amt != 0:
+            write_data_cell(ws_sum, 3, 1, short_dep_num)
+            write_data_cell(ws_sum, 3, 2, receive_payment_amt, fmt="#,##0.00", align=ALIGN_CENTER)
+            write_data_cell(ws_sum, 3, 3, deposit_network_full, align=ALIGN_CENTER)
+            write_data_cell(ws_sum, 3, 4, remit_date_str, align=ALIGN_CENTER)
+            write_data_cell(ws_sum, 3, 5, short_dep_num)
+            write_data_cell(ws_sum, 3, 6, bank_account, align=ALIGN_CENTER)
         ws_sum.cell(row=5, column=1, value="Bank Deposit").font = SECTION_FONT
         write_header_row(ws_sum, 6, BD_COLS)
         for i, row in deposit_rows.iterrows():
