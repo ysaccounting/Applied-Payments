@@ -11,7 +11,7 @@ import io
 import re
 import processor as P
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, Protection
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, Protection, Color
 from openpyxl.worksheet.protection import SheetProtection
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.formatting.rule import FormulaRule
@@ -75,21 +75,29 @@ def _strip_time(s):
 
 
 def _flag_category(canon):
-    """Return 'chargeback' | 'notfound' | 'mti' | None for a canonical row.
-    Drives both the highlight colour and the sort order."""
+    """Return 'chargeback' | 'notfound' | 'mti_chargeback' | 'mti' | None for a
+    canonical row. Drives both the highlight colour and the sort order.
+    A 'more than one invoice' row with a negative amount is a chargeback variant
+    ('mti_chargeback', greenish) handled like a regular chargeback; positive
+    amounts stay 'mti' (blue)."""
     status = str(canon[3]).strip().lower()
     if 'skipped invoice not found' in status:
         return 'notfound'
     if 'skipped found more than one invoice' in status:
-        return 'mti'
+        a = _to_amt(canon[2])
+        return 'mti_chargeback' if (a is not None and a < 0) else 'mti'
     a = _to_amt(canon[2])
     if (a is not None and a < 0) or canon[0].strip() == '':
         return 'chargeback'
     return None
 
 
-_SORT_RANK = {'chargeback': 0, 'notfound': 1, 'mti': 2, None: 3}
-_FLAG_FILL = {'chargeback': FILL_CHARGEBACK, 'notfound': FILL_NOTFOUND, 'mti': FILL_MTI}
+# Sort order: chargeback, not-found, MTI-chargeback (negative), MTI (positive), rest.
+_SORT_RANK = {'chargeback': 0, 'notfound': 1, 'mti_chargeback': 2, 'mti': 3, None: 4}
+# 'mti_chargeback' uses accent3 (9BBB59) lightened — a greenish highlight.
+FILL_MTI_CHARGEBACK = Color(theme=6, tint=0.6)
+_FLAG_FILL = {'chargeback': FILL_CHARGEBACK, 'notfound': FILL_NOTFOUND,
+              'mti_chargeback': FILL_MTI_CHARGEBACK, 'mti': FILL_MTI}
 
 
 def _read_rows(input_path):
@@ -178,7 +186,7 @@ def _default_order_tag(cat, canon, net_key):
         if 'ticketsnow' in net_key and _order_is_zero(canon[1]):
             return ''
         return 'Not Found'
-    if cat == 'chargeback':
+    if cat in ('chargeback', 'mti_chargeback'):
         reason = _norm_reason(canon[15])
         if not reason:
             return ''
@@ -329,39 +337,35 @@ def _build_guidelines_tab(wb):
     def fill(hexrgb):
         return PatternFill('solid', fgColor=hexrgb)
 
-    # Title
-    rs['A1'] = 'Guidelines'; rs['A1'].font = TITLE; rs.row_dimensions[1].height = 16.5
+    # Title / intro
+    rs['A1'] = ('Guidelines - complete columns T thru X on the first tab per the guidelines below. '
+                'Some columns come prefilled based on certain info in the raw applied payments report '
+                'from TicketVault.')
+    rs['A1'].font = TITLE; rs.row_dimensions[1].height = 16.5
 
     # Colour legend
     rs['A2'] = 'Chargeback orders (negative amounts)'
     rs['A2'].font = FONT; rs['A2'].fill = fill(_YEL)
     rs['A3'] = 'Not Found orders (including monthly Due from/to TickPick adjustment and TradeDesk Fees)'
     rs['A3'].font = FONT; rs['A3'].fill = fill(_PEACH)
-    rs['A4'] = 'Skipped More Than One Invoice Found orders. Column X is only used for these orders'
-    rs['A4'].font = FONT; rs['A4'].fill = fill(_BLUE)
+    rs['A4'] = 'Skipped More Than One Invoice Found orders and chargeback.'
+    rs['A4'].font = FONT; rs['A4'].fill = fill(FILL_MTI_CHARGEBACK)
+    rs['A5'] = 'Skipped More Than One Invoice Found orders. Column X is only used for these orders'
+    rs['A5'].font = FONT; rs['A5'].fill = fill(_BLUE)
 
-    # Intro
-    rs['A6'] = ('See below for details on each Order Tag option in Column T. Certain columns change to '
-                'black based on the specific Order Tag selected, indicating that nothing should be done '
-                'in those columns or in TicketVault.')
-    rs['A6'].font = FONT
-    rs['A7'] = CellRichText([
-        'For cancelled events and problem orders which were ',
-        TextBlock(_if(b=True), 'already'),
-        TextBlock(_if(), ' cancelled out from TicketVault, Cancelled Out? column comes prefilled as Yes '
-                         'and Cancellation Reason column comes prefilled with the reason in TicketVault.'),
-    ])
+    # Note on split chargebacks
+    rs['A7'] = ('In cases where a chargeback is split into two rows - one a payout recoup and one a '
+                'cancellation fee - use Problem Order tag on both rows. For the recoup row, put Yes for '
+                'already paid. For the cancellation fee row, put No for already paid.')
     rs['A7'].font = FONT
-    rs['A8'] = 'For cancelled events, Already Paid? column defaults to Yes.'
-    rs['A8'].font = FONT
 
     # Detail table header
     RHEAD = PatternFill('solid', fgColor='FF4472C4')
     RH = Font(name='Arial', size=10, bold=True, color='FFFFFFFF')
-    a10 = rs['A10']; a10.value = 'Order Tags'; a10.font = RH; a10.fill = RHEAD
-    a10.alignment = Alignment(horizontal='center', vertical='center')
-    b10 = rs['B10']; b10.value = 'What Zone 2 does to that row'; b10.font = RH; b10.fill = RHEAD
-    b10.alignment = Alignment(horizontal='left', vertical='center')
+    a9 = rs['A9']; a9.value = 'Order Tags'; a9.font = RH; a9.fill = RHEAD
+    a9.alignment = Alignment(horizontal='center', vertical='center')
+    b9 = rs['B9']; b9.value = 'What Zone 2 does to that row'; b9.font = RH; b9.fill = RHEAD
+    b9.alignment = Alignment(horizontal='left', vertical='center')
 
     def title_cell(title, note):
         return CellRichText([
@@ -371,13 +375,13 @@ def _build_guidelines_tab(wb):
 
     # (row, fill, A rich title/note, B body[str or CellRichText], height)
     rows = [
-        (11, _YEL,
+        (10, _YEL,
          title_cell('Cancelled Event', '(the full chargeback amount is a payout recoup with no cancellation fee)'),
          '>Nothing changes on the row.\n'
          '>If the order was not already cancelled out from TicketVault, then cancel it and put Yes in Cancelled Out? Column.\n'
          '>Use "Event Cancelled/Postponed - NA" for the cancellation reason in TicketVault.',
          44.25),
-        (12, _YEL,
+        (11, _YEL,
          title_cell('Discount', '(the full chargeback amount is a cancellation fee — other three columns blacked out)'),
          CellRichText([
              '>"-Fee" is added to the Company name so that it\'s treated as a cancellation fee. ',
@@ -389,19 +393,19 @@ def _build_guidelines_tab(wb):
                               ">Amounts should be relatively small compared to the sales price."),
          ]),
          78.75),
-        (13, _YEL,
+        (12, _YEL,
          title_cell('Mutual Cancellation', '(the full chargeback amount is a payout recoup with no cancellation fee)'),
          '>Nothing changes on the row.\n'
          '>If the order was not already cancelled out from TicketVault, then cancel it and put Yes in Cancelled Out? Column.\n'
          '>Use "Mutually Cancelled - BR" for the cancellation reason in TicketVault.',
          44.25),
-        (14, _YEL,
+        (13, _YEL,
          title_cell('Problem Order, and Already Paid? = No', '(the full chargeback amount is a cancellation fee)'),
          '>"-Fee" is added to the Company name so that it\'s treated as a cancellation fee.\n'
          '>If the order was not already cancelled out from TicketVault, then cancel it and put Yes in Cancelled Out? column.\n'
          '>Use "Cancelled by Marketplace - BR" for the cancellation reason in TicketVault.',
          56.25),
-        (15, _YEL,
+        (14, _YEL,
          title_cell('Problem Order, and Already Paid? = Yes', '(the chargeback amount is a payout recoup + cancellation fee)'),
          '>The row is split into two negative lines:\n'
          '    Line 1 = the Payout amount, as a negative, with the original Company.\n'
@@ -410,26 +414,32 @@ def _build_guidelines_tab(wb):
          '>If the order was not already cancelled out from TicketVault, then cancel it and put Yes in Cancelled Out? column.\n'
          '>Use "Cancelled by Marketplace - BR" for the cancellation reason in TicketVault.',
          76.5),
-        (16, _YEL,
+        (15, _YEL,
          title_cell('StubHub Loan', '(daily loan repayments from Y&S to StubHub)'),
          '>Replaces the Company and only displays on StubHub reports. No further action required.\n'
          '>Repayments are assigned to random amounts and order numbers (sometimes for tens of thousands of dollars per order) and will not\n'
          '  show signs of being problem orders when searched in Gmail.',
          51.0),
-        (17, _YEL,
+        (16, _YEL,
          title_cell('TradeDesk Fees', '(monthly fulfillment fees paid from Y&S to TicketsNow)'),
          '>Replaces the Company with Other Fees and only displays on TicketsNow reports. No further action required.\n'
          '>Shows up as Not Found chargeback with no order #, and usually for tens of thousands of dollars.',
          25.5),
-        (18, _PEACH,
+        (17, _PEACH,
          title_cell('Due from/to TickPick', '(monthly repayment to Y&S for theft loss)'),
          '>Replaces the Company and only displays on TickPick reports. No further action required.\n'
          '>Shows up as Not Found payment, but hopefully with order # DueFromTickPick.',
          30.0),
-        (19, _PEACH,
+        (18, _PEACH,
          title_cell('Not Found', '(orders with status "Skipped Invoice Not Found")'),
          '>Replaces the Company. No further action required.',
          30.0),
+        (19, FILL_MTI_CHARGEBACK,
+         title_cell('More Than One Invoice and Chargeback',
+                    '(orders with status "Skipped Found more than one invoice with this Ext Order Number and Client"\n'
+                    'and negative amount)'),
+         '>Treat the same as regular chargebacks for cancelled events and problem orders.',
+         42.0),
         (20, _BLUE,
          title_cell('More Than One Invoice',
                     '(orders with status "Skipped Found more than one invoice with this Ext Order Number and Client")'),
@@ -460,6 +470,6 @@ def _build_guidelines_tab(wb):
         r += 1
     rs.merge_cells(start_row=28, start_column=1, end_row=28, end_column=2)
 
-    rs.column_dimensions['A'].width = 83.33
+    rs.column_dimensions['A'].width = 83.28515625
     rs.column_dimensions['B'].width = 113.0
     return rs
