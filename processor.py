@@ -553,15 +553,16 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
     rows = [build_row(r, remit_date_str, network, evopay_sale, evopay_cancel) for _, r in raw.iterrows()]
     df_out = pd.DataFrame(rows)
 
-    # Drop $0.00 Cancellation Fees lines outright. They carry no money and just
-    # clutter the detail tabs/sheets — TicketsNow reports a recoup line plus a fee
-    # line per cancel and the fee is often $0, and the Problem Order "Already
-    # Paid = Yes" split (line2 = amount + payout) is exactly $0 when the chargeback
-    # is a pure payout recoup. Removing them doesn't change any deposit/receive
-    # total (a $0 line sums to nothing).
-    if not df_out.empty and "Type" in df_out.columns:
+    # Drop any $0.00 detail line outright. It carries no money and just clutters
+    # the detail tabs/sheets. Cancellation Fees often come through at $0 (TicketsNow
+    # reports a recoup + fee line per cancel, and the Problem Order "Already Paid"
+    # split lands the fee on $0 for a pure payout recoup); a $0 Payment can also
+    # occur. Removing them doesn't change any deposit/receive total (a $0 line sums
+    # to nothing). Recoup is never $0 by construction (it's only assigned to
+    # strictly-negative amounts).
+    if not df_out.empty and "Amount" in df_out.columns:
         _amt = pd.to_numeric(df_out["Amount"], errors="coerce").round(2)
-        df_out = df_out[~((df_out["Type"] == "Cancellation Fees") & (_amt == 0))].reset_index(drop=True)
+        df_out = df_out[_amt != 0].reset_index(drop=True)
 
     ys_df = df_out[df_out["_category"].isin(["Y&S - Deposit", "Y&S - RecPmt"])].copy()
     affiliates_df = df_out[df_out["_category"] == "Affiliates"].copy()
