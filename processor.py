@@ -741,6 +741,7 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
     ws_sum = wb1.create_sheet("Summary")
     SUM_COLS = ["Memo", "Amount", "Network", "Date", "Deposit #", "Bank Account"]
     BD_COLS  = ["Account", "Amount", "Network", "Date", "Deposit #", "Bank Account"]
+    FX_COLS  = ["Account", "Amount", "Network", "Date", "Deposit #"]
     SUM_WIDTHS = [28, 14, 20, 12, 32, 14]
 
     if is_te:
@@ -789,6 +790,22 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
             write_data_cell(ws_sum, r, 4, row["Date"], align=ALIGN_CENTER)
             write_data_cell(ws_sum, r, 5, row["Deposit #"])
             write_data_cell(ws_sum, r, 6, row["Bank Account"], align=ALIGN_CENTER)
+        # FX Journal Entry section (TicketsNow CAD only). Positive = debit,
+        # negative = credit; the column total nets to zero (balanced entry).
+        if fx_journal:
+            fx_row = 8 + len(deposit_rows)        # one blank row after the bank deposit
+            ws_sum.cell(row=fx_row, column=1, value="FX Journal Entry").font = SECTION_FONT
+            fx_row += 1
+            write_header_row(ws_sum, fx_row, FX_COLS)
+            fx_row += 1
+            for line in fx_journal["lines"]:
+                amt = line["debit"] if "debit" in line else -line["credit"]
+                write_data_cell(ws_sum, fx_row, 1, line["account"])
+                write_data_cell(ws_sum, fx_row, 2, amt, fmt="#,##0.00", align=ALIGN_CENTER)
+                write_data_cell(ws_sum, fx_row, 3, fx_journal["network"], align=ALIGN_CENTER)
+                write_data_cell(ws_sum, fx_row, 4, fx_journal["date"], align=ALIGN_CENTER)
+                write_data_cell(ws_sum, fx_row, 5, fx_journal["deposit_num"])
+                fx_row += 1
     for col_idx, w in enumerate(SUM_WIDTHS, 1):
         ws_sum.column_dimensions[get_column_letter(col_idx)].width = w
 
