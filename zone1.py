@@ -234,13 +234,15 @@ def generate_review_workbook(input_path):
         flag_fill = PatternFill('solid', fgColor=_FLAG_FILL[cat]) if flag else None
         for ci in range(1, 19):                       # A-R
             val = canon[ci - 1]
-            if ci == 3:
+            if ci in (3, 5, 6):                        # Amount, TV Fee, Payout -> numeric, 2 dp
                 a = _to_amt(val); val = a if a is not None else val
             if ci == 11:
                 val = _strip_time(val)
             cell = ws.cell(row=ri, column=ci, value=val); cell.font = FONT
+            if ci in (3, 5, 6):
+                cell.number_format = '#,##0.00'
             if ci == 3:
-                cell.number_format = '#,##0.00'; cell.alignment = Alignment(horizontal='center')
+                cell.alignment = Alignment(horizontal='center')
             if flag:
                 cell.fill = flag_fill
             cell.protection = UNLOCKED
@@ -337,11 +339,11 @@ def _build_guidelines_tab(wb):
     def fill(hexrgb):
         return PatternFill('solid', fgColor=hexrgb)
 
-    # Title / intro
+    # Title / intro — a normal instruction line (not a big bold banner).
     rs['A1'] = ('Guidelines - complete columns T thru X on the first tab per the guidelines below. '
                 'Some columns come prefilled based on certain info in the raw applied payments report '
                 'from TicketVault.')
-    rs['A1'].font = TITLE; rs.row_dimensions[1].height = 16.5
+    rs['A1'].font = FONT; rs.row_dimensions[1].height = 16.5
 
     # Colour legend
     rs['A2'] = 'Chargeback orders (negative amounts)'
