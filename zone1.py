@@ -339,10 +339,14 @@ def _build_guidelines_tab(wb):
     def fill(hexrgb):
         return PatternFill('solid', fgColor=hexrgb)
 
-    # Title / intro — a normal instruction line (not a big bold banner).
-    rs['A1'] = ('Guidelines - complete columns T thru X on the first tab per the guidelines below. '
-                'Some columns come prefilled based on certain info in the raw applied payments report '
-                'from TicketVault.')
+    # Title / intro — only the word "Guidelines" is a big bold title; the rest is
+    # a normal instruction line.
+    rs['A1'] = CellRichText([
+        TextBlock(InlineFont(rFont='Arial', sz=13, b=True), 'Guidelines'),
+        TextBlock(_if(), ' - complete columns T thru X on the first tab per the guidelines below. '
+                         'Some columns come prefilled based on certain info in the raw applied payments '
+                         'report from TicketVault.'),
+    ])
     rs['A1'].font = FONT; rs.row_dimensions[1].height = 16.5
 
     # Colour legend
