@@ -123,19 +123,71 @@ NETWORK_TAGS = {              # substring of the normalised network key -> extra
 }
 
 
-def _order_tags(input_path):
-    """Order-Tag dropdown list for this file's network: the base 5 plus any
-    network-specific tag, kept alphabetical to match the sample."""
+def _net_key(input_path):
+    """Normalised network key for the file (lowercase, no spaces/parens)."""
     try:
         net = str(P.parse_filename(os.path.basename(input_path))[0])
     except Exception:
         net = ''
-    key = net.lower().replace('(', '').replace(')', '').replace(' ', '')
+    return net.lower().replace('(', '').replace(')', '').replace(' ', '')
+
+
+def _order_tags(input_path):
+    """Order-Tag dropdown list for this file's network: the base tags plus any
+    network-specific tag, kept alphabetical to match the sample."""
+    key = _net_key(input_path)
     tags = list(ORDER_TAGS_BASE)
     for sub, tag in NETWORK_TAGS.items():
         if sub in key:
             tags.append(tag)
     return sorted(tags)
+
+
+def _order_is_zero(v):
+    """True when the Order# is missing or zero."""
+    s = str(v).strip()
+    if s == '':
+        return True
+    try:
+        return float(s) == 0
+    except ValueError:
+        return False
+
+
+def _norm_reason(s):
+    """Collapse whitespace + lowercase for tolerant reason matching."""
+    return ''.join(str(s).split()).lower()
+
+
+def _default_order_tag(cat, canon, net_key):
+    """Default Order Tag (col T) prefill for a flagged row. The reviewer can still
+    override via the dropdown.
+      • More-than-one-invoice rows -> More Than One Invoice
+      • Not-Found rows             -> Not Found, EXCEPT a TicketsNow Not-Found with
+                                      no order # (genuinely ambiguous — could be Not
+                                      Found or TradeDesk Fees) -> left blank
+      • Chargebacks                -> by preloaded cancellation reason:
+            Mutually Cancelled - BR        -> Mutual Cancellation
+            Event Cancelled/Postponed - NA -> Cancelled Event
+            any other non-blank reason     -> Problem Order
+            blank reason                   -> no default (left for the reviewer)
+    """
+    if cat == 'mti':
+        return 'More Than One Invoice'
+    if cat == 'notfound':
+        if 'ticketsnow' in net_key and _order_is_zero(canon[1]):
+            return ''
+        return 'Not Found'
+    if cat == 'chargeback':
+        reason = _norm_reason(canon[15])
+        if not reason:
+            return ''
+        if reason == _norm_reason(TAG_DEFAULT_REASON['Mutual Cancellation']):
+            return 'Mutual Cancellation'
+        if reason == _norm_reason(TAG_DEFAULT_REASON['Cancelled Event']):
+            return 'Cancelled Event'
+        return 'Problem Order'
+    return ''
 
 
 def generate_review_workbook(input_path):
@@ -146,6 +198,7 @@ def generate_review_workbook(input_path):
     # top, each group sorted by amount ascending; unflagged rows last.
     rows.sort(key=lambda c: (_SORT_RANK[_flag_category(c)],
                              _to_amt(c[2]) if _to_amt(c[2]) is not None else 0))
+    net_key = _net_key(input_path)
 
     wb = Workbook(); ws = wb.active; ws.title = _tab_name(input_path)
     FONT = Font(name='Arial', size=10)
@@ -195,6 +248,10 @@ def generate_review_workbook(input_path):
             cell.protection = UNLOCKED if (flag or ci == W) else LOCKED
 
         if flag:
+            # Default the Order Tag (the reviewer can still change it).
+            default_tag = _default_order_tag(cat, canon, net_key)
+            if default_tag:
+                ws.cell(row=ri, column=T, value=default_tag)
             # Cancelled Out? + Cancellation Reason prefill from TicketVault.
             if prefill_reason:
                 ws.cell(row=ri, column=U, value='Yes')

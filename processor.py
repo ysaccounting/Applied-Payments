@@ -557,6 +557,11 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
     affiliates_df = df_out[df_out["_category"] == "Affiliates"].copy()
     stubhub_df = df_out[df_out["_category"] == "Y&S - StubHub"].copy()
     other_df = df_out[df_out["_category"] == "Other"].copy()
+    # TradeDesk Fees ("Other Fees") and Due from/to TickPick post to the bank
+    # deposit but should NOT appear in the Other detail tab or the Other Google
+    # Sheet — keep a detail-only view that drops them.
+    OTHER_DEPOSIT_ONLY = {"Other Fees", "Due from/to TickPick"}
+    other_df_detail = other_df[~other_df["Company"].isin(OTHER_DEPOSIT_ONLY)].copy()
 
     # ── Entry #1: Receive Payment ─────────────────────────────────────────────
     ys_payments = ys_df[ys_df["Type"] == "Payment"]["Amount"].sum()
@@ -815,7 +820,7 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
         "Y&S": ys_df[DATA_COLS].reset_index(drop=True),
         "Affiliates": affiliates_df[DATA_COLS].reset_index(drop=True),
         "StubHub Loan": stubhub_df[DATA_COLS].reset_index(drop=True),
-        "Other": other_df[DATA_COLS].reset_index(drop=True),
+        "Other": other_df_detail[DATA_COLS].reset_index(drop=True),
     }
     optional_tabs = {"StubHub Loan", "Other"}
     for tab_name, df in tab_data.items():
@@ -881,7 +886,7 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
         ("Y&S", ys_df),
         ("Affiliates", affiliates_df),
         ("StubHub Loan", stubhub_df),
-        ("Other", other_df),
+        ("Other", other_df_detail),
     ]
     detail_rows_data = []
     for tab_name, df in detail_source:
