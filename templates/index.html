@@ -83,7 +83,7 @@
 
   <!-- Zone 1: Prepare review file -->
   <div class="card">
-    <div class="section-label">Zone 1 (Step 1 - required) - upload the applied payments report from TicketVault exactly as it comes. Then download the output file for review and upload into Zone 2.</div>
+    <div class="section-label">Zone 1 - upload the applied payments report from TicketVault exactly as it comes. Then download the output file for review and upload into Zone 2.</div>
     <div class="drop-zone" id="z1DropZone"
          onclick="document.getElementById('z1Input').click()"
          ondragover="onZ1DragOver(event)"
@@ -111,7 +111,7 @@
 
   <!-- Upload card -->
   <div class="card">
-    <div class="section-label">Zone 2 (Step 2 - required) - Upload the reviewed output file from Zone 1. Zone 2 only accepts Zone 1 output workbooks.</div>
+    <div class="section-label">Zone 2 - Upload the reviewed output file from Zone 1. Zone 2 only accepts Zone 1 output workbooks.</div>
 
     <div class="drop-zone" id="dropZone"
          onclick="document.getElementById('fileInput').click()"
@@ -159,8 +159,6 @@
         </div>
       </div>
     </div>
-
-    <p style="font-size: 15px; font-weight: 700; color: #e00000; margin-top: 16px; letter-spacing: 0.3px;">IF NOT USING ZONE 1, MAKE SURE TO USE COLUMN S FOR REASON AND INPUT THE RELEVANT NOTES FOR CHARGEBACKS FIRST.</p>
 
     <div class="btn-row">
       <button class="btn btn-primary" id="processBtn" onclick="processFile()" disabled>
