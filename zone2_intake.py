@@ -216,13 +216,14 @@ def read_filled_zone1(xlsx_path, original_filename):
 
 
 def looks_like_zone1(xlsx_path):
-    """True if the workbook carries the Zone-1 answer columns."""
+    """True only for a genuine Zone-1 review output — i.e. a workbook whose data
+    sheet carries the full set of Zone-1 answer columns."""
     try:
         wb = load_workbook(xlsx_path, read_only=True, data_only=True)
         ws = _data_sheet(wb)
         hdr = {_s(ws.cell(row=1, column=c).value) for c in range(1, (ws.max_column or 0) + 1)}
         wb.close()
-        return 'Order Tag' in hdr and 'Cancellation Reason' in hdr
+        return all(h in hdr for h in ANSWER_HEADERS)
     except Exception:
         return False
 

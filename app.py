@@ -117,18 +117,24 @@ def process_file():
 
     f = request.files["file"]
     fname_lower = f.filename.lower()
-    if not (fname_lower.endswith(".csv") or fname_lower.endswith(".xlsx")):
-        return jsonify({"error": "File must be a .csv (old way) or a filled Zone 1 workbook (.xlsx)"}), 400
+    if not fname_lower.endswith(".xlsx"):
+        return jsonify({"error": "Zone 2 only accepts a Zone 1 output workbook (.xlsx). "
+                                 "Run the raw report through Zone 1 (Step 1) first."}), 400
 
     session_id = str(uuid.uuid4())
     upload_path = os.path.join(UPLOAD_FOLDER, f"{session_id}_{f.filename}")
     f.save(upload_path)
 
-    # New two-zone path: a filled Zone-1 workbook (.xlsx with the answer columns).
-    zone1_snapshot = None
-    use_new_path = fname_lower.endswith(".xlsx") and z2.looks_like_zone1(upload_path)
+    # Zone 1 is required: the upload must be a genuine Zone 1 review workbook.
+    if not z2.looks_like_zone1(upload_path):
+        if os.path.exists(upload_path):
+            os.remove(upload_path)
+        return jsonify({"error": "This file isn't a Zone 1 output workbook. Generate it in "
+                                 "Zone 1 (Step 1), fill in the answer columns, then upload it here."}), 400
 
-    # Handle optional EvoPay file for TicketEvolution uploads (works for both paths).
+    zone1_snapshot = None
+
+    # Handle optional EvoPay file for TicketEvolution uploads.
     evopay_path = None
     usd_received = request.form.get("usd_received")  # CAD files: USD actually received from the bank conversion
     evopay_file = request.files.get("evopay_file")
@@ -138,14 +144,8 @@ def process_file():
         evopay_file.save(evopay_path)
 
     try:
-        if use_new_path:
-            raw_df, proc_filename, zone1_snapshot = z2.read_filled_zone1(upload_path, f.filename)
-            result = process(None, proc_filename, evopay_path=evopay_path, raw_df=raw_df, usd_received=usd_received)
-        else:
-            if not fname_lower.endswith(".csv"):
-                raise ValueError("This .xlsx doesn't look like a Zone 1 review file. "
-                                 "Upload the raw report as a .csv, or a filled Zone 1 workbook.")
-            result = process(upload_path, f.filename, evopay_path=evopay_path, usd_received=usd_received)
+        raw_df, proc_filename, zone1_snapshot = z2.read_filled_zone1(upload_path, f.filename)
+        result = process(None, proc_filename, evopay_path=evopay_path, raw_df=raw_df, usd_received=usd_received)
     except Exception as e:
         if os.path.exists(upload_path):
             os.remove(upload_path)

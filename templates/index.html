@@ -83,7 +83,7 @@
 
   <!-- Zone 1: Prepare review file -->
   <div class="card">
-    <div class="section-label">Zone 1 (optional) - upload the applied payments report from TicketVault exactly as it comes. Then download the output file for subsequent review and upload into Zone 2.</div>
+    <div class="section-label">Zone 1 (Step 1 - required) - upload the applied payments report from TicketVault exactly as it comes. Then download the output file for review and upload into Zone 2.</div>
     <div class="drop-zone" id="z1DropZone"
          onclick="document.getElementById('z1Input').click()"
          ondragover="onZ1DragOver(event)"
@@ -111,7 +111,7 @@
 
   <!-- Upload card -->
   <div class="card">
-    <div class="section-label">Zone 2 (Required) - Upload the reviewed output file from Zone 1, or the traditional file we've used until now.</div>
+    <div class="section-label">Zone 2 (Step 2 - required) - Upload the reviewed output file from Zone 1. Zone 2 only accepts Zone 1 output workbooks.</div>
 
     <div class="drop-zone" id="dropZone"
          onclick="document.getElementById('fileInput').click()"
@@ -121,11 +121,11 @@
       <div class="drop-icon">
         <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       </div>
-      <div class="drop-title" id="dropTitle">Drag &amp; drop either report here (.xlsx or .csv).</div>
+      <div class="drop-title" id="dropTitle">Drag &amp; drop the Zone 1 output file here (.xlsx).</div>
       <div class="drop-sub" id="dropSub">or click to browse</div>
       <div class="drop-filename" id="dropFilename"></div>
     </div>
-    <input type="file" id="fileInput" accept=".csv,.xlsx" style="display:none" onchange="onFileSelect(this.files[0])">
+    <input type="file" id="fileInput" accept=".xlsx" style="display:none" onchange="onFileSelect(this.files[0])">
 
     <!-- EvoPay upload zone — shown only for TicketEvolution files -->
     <div id="evoPaySection" style="display:none; margin-top: 20px;">
@@ -367,7 +367,12 @@
     e.preventDefault();
     document.getElementById('dropZone').classList.remove('drag-over');
     const f = e.dataTransfer.files[0];
-    if (f && (f.name.toLowerCase().endsWith('.csv') || f.name.toLowerCase().endsWith('.xlsx'))) setFile(f);
+    if (!f) return;
+    if (f.name.toLowerCase().endsWith('.xlsx')) {
+      setFile(f);
+    } else {
+      alert('Zone 2 only accepts a Zone 1 output workbook (.xlsx). Run the raw report through Zone 1 first.');
+    }
   }
 
   function onFileSelect(f) {
@@ -384,7 +389,7 @@
 
     const lname = f.name.toLowerCase();
     const isXlsx = lname.endsWith('.xlsx');
-    // TicketEvolution needs the EvoPay file whether it's the raw .csv or a Zone 1 review .xlsx
+    // TicketEvolution (Zone 1 output name contains "ticketevolution") needs the EvoPay ledger too
     const isTE = lname.includes('ticketevolution');
     document.getElementById('evoPaySection').style.display = isTE ? 'block' : 'none';
     document.getElementById('cashReceivedSection').style.display = isTE ? 'none' : 'block';
