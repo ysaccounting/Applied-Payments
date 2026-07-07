@@ -85,15 +85,30 @@ def index():
 def debug_version():
     """Quick check of what the RUNNING app is actually executing. Visit this URL
     after deploying. If 'stubhub_zero_fix_live' is true, the StubHub $0 -> Clearing
-    Account change is live; if false, the server is still running an old build."""
+    Account change is live; if false, the server is still running an old build.
+
+    Pass ?name=<zone1 filename> to test your exact file through the same transform
+    Zone 2 uses (strip the _zone1 suffix, then parse) and see the bank account."""
     from processor import parse_filename
+    import re as _re
     checks = {}
-    for name in ("YS_StubHub_0_07-01-26_1.csv", "YS_StubHub_07-01-26.csv"):
+
+    def run(name):
         try:
             nd, rd, dn, ba, px = parse_filename(name)
-            checks[name] = {"network": nd, "bank_account": ba}
+            return {"network": nd, "bank_account": ba}
         except Exception as e:
-            checks[name] = {"error": str(e)}
+            return {"error": str(e)}
+
+    q = request.args.get("name")
+    if q:
+        stripped = os.path.splitext(_re.sub(r'_zone1', '', q, flags=_re.I))[0] + '.csv'
+        checks["your_file"] = {"uploaded_name": q,
+                               "after_zone1_strip": stripped,
+                               "result": run(stripped)}
+
+    for name in ("YS_StubHub_0_07-01-26_1.csv", "YS_StubHub_07-01-26.csv"):
+        checks[name] = run(name)
     live = checks.get("YS_StubHub_0_07-01-26_1.csv", {}).get("bank_account") == "Clearing Account"
     return jsonify({"stubhub_zero_fix_live": live, "checks": checks})
 
