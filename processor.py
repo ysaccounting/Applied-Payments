@@ -202,6 +202,15 @@ def parse_filename(filename):
         network_raw = parts[0]
         prefix = ""
 
+    # StubHub "$0" variant (e.g. YS_StubHub_0_07-01-26): a standalone "0" token in
+    # the network name marks a zero-dollar StubHub batch. Ignore the "0" so it is
+    # identified and processed exactly like StubHub; it is routed to the Clearing
+    # Account (below) instead of FFB Chkg.
+    _net_parts = [p for p in network_raw.split("_") if p]
+    stubhub_zero = len(_net_parts) >= 2 and _net_parts[0].lower() == "stubhub" and "0" in _net_parts[1:]
+    if stubhub_zero:
+        network_raw = "_".join(p for p in _net_parts if p != "0")
+
     # Normalize key for lookups (lowercase, strip parens/spaces)
     network_key = network_raw.lower().replace("(", "").replace(")", "").replace(" ", "")
 
@@ -228,6 +237,8 @@ def parse_filename(filename):
         "ticketsnowcad": "Wise Chkg (CAD)",
     }
     bank_account = bank_account_map.get(network_key, "FFB Chkg")
+    if stubhub_zero:
+        bank_account = "Clearing Account"
 
     return network_display, remit_date, deposit_network, bank_account, prefix
 
