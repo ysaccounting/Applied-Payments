@@ -81,6 +81,23 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/debug/version")
+def debug_version():
+    """Quick check of what the RUNNING app is actually executing. Visit this URL
+    after deploying. If 'stubhub_zero_fix_live' is true, the StubHub $0 -> Clearing
+    Account change is live; if false, the server is still running an old build."""
+    from processor import parse_filename
+    checks = {}
+    for name in ("YS_StubHub_0_07-01-26_1.csv", "YS_StubHub_07-01-26.csv"):
+        try:
+            nd, rd, dn, ba, px = parse_filename(name)
+            checks[name] = {"network": nd, "bank_account": ba}
+        except Exception as e:
+            checks[name] = {"error": str(e)}
+    live = checks.get("YS_StubHub_0_07-01-26_1.csv", {}).get("bank_account") == "Clearing Account"
+    return jsonify({"stubhub_zero_fix_live": live, "checks": checks})
+
+
 @app.route("/zone1/generate", methods=["POST"])
 def zone1_generate():
     """Step 1 — raw report (.csv) in, enriched review workbook (.xlsx) out."""
