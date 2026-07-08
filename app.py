@@ -107,9 +107,9 @@ def debug_version():
                                "after_zone1_strip": stripped,
                                "result": run(stripped)}
 
-    for name in ("YS_StubHub_0_07-01-26_1.csv", "YS_StubHub_07-01-26.csv"):
+    for name in ("YS_StubHub($0)_07-08-26.csv", "YS_StubHub_07-08-26.csv"):
         checks[name] = run(name)
-    live = checks.get("YS_StubHub_0_07-01-26_1.csv", {}).get("bank_account") == "Clearing Account"
+    live = checks.get("YS_StubHub($0)_07-08-26.csv", {}).get("bank_account") == "Clearing Account"
     return jsonify({"stubhub_zero_fix_live": live, "checks": checks})
 
 

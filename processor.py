@@ -171,25 +171,28 @@ def parse_filename(filename):
     """
     base = os.path.splitext(filename)[0]
     base = base.replace(" ", "_")
-    # Strip trailing copy indicators like (1), (2) etc before parsing
-    import re as _re2
-    base = _re2.sub(r"\(\d+\)$", "", base).rstrip("_")
+    # Strip copy indicators like (1), (2) anywhere (pure-digit parens only, so
+    # markers like ($0) or (CAD) are preserved), plus any stray leading/trailing
+    # underscores (e.g. left behind after removing a _zone1 suffix).
+    base = re.sub(r"\(\d+\)", "", base).strip("_")
     parts = base.split("_")
 
-    import re as _re
-    date_pat = _re.compile(r'^\d{1,2}-\d{1,2}-\d{2,4}$')
-
-    # Find the date part — search from the end for first part matching date pattern
+    # Find the date part — search from the end. The date may be glued to other
+    # characters inside a part (e.g. "07-08-26(1)"), so search and extract it
+    # rather than requiring the whole part to be a date.
+    date_pat = re.compile(r'(\d{1,2}-\d{1,2}-\d{2,4})')
     date_idx = None
+    date_str = None
     for i in range(len(parts) - 1, -1, -1):
-        if date_pat.match(parts[i]):
+        m = date_pat.search(parts[i])
+        if m:
             date_idx = i
+            date_str = m.group(1)
             break
 
     if date_idx is None:
         raise ValueError(f"Could not find a date in filename: {filename}")
 
-    date_str = parts[date_idx]
     d = date_str.split("-")
     year = int(d[2]) if len(d[2]) == 4 else 2000 + int(d[2])
     remit_date = datetime(year, int(d[0]), int(d[1]))
@@ -202,12 +205,12 @@ def parse_filename(filename):
         network_raw = parts[0]
         prefix = ""
 
-    # StubHub "$0" variant (e.g. YS_StubHub_0_07-01-26, YS_StubHub0_07-01-26, or a
-    # "YSStubHub0" data tab): a "0" marker on the StubHub network name flags a
-    # zero-dollar batch. Ignore the "0" so it is identified and processed exactly
-    # like StubHub; it is routed to the Clearing Account (below) instead of FFB Chkg.
-    # Robust to the 0 being attached ("stubhub0") or a separate token ("stubhub_0").
-    _net_norm = network_raw.lower().replace("_", "").replace(" ", "")
+    # StubHub "$0" variant. The marker shows up in the file name in several forms —
+    # "YS_StubHub($0)_07-08-26", "YS_StubHub_0_07-01-26", "YS_StubHub0_...", or a
+    # "YSStubHub0" data tab. Strip all punctuation and compare: any of these reduce
+    # to "stubhub0". Treat it exactly like StubHub, but route it to the Clearing
+    # Account (below) instead of FFB Chkg.
+    _net_norm = re.sub(r'[^a-z0-9]', '', network_raw.lower())
     stubhub_zero = _net_norm == "stubhub0"
     if stubhub_zero:
         network_raw = "StubHub"
