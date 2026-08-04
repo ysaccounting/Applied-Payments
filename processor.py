@@ -625,10 +625,15 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
     # payment + cancellation fees + other Y&S money) goes to Foreign Exchange
     # Conversion. Produces a balanced QBO journal entry + per-affiliate FX rows
     # for the Affiliates sheet.
+    # Only networks that actually deposit through Wise CAD (currently TicketsNow
+    # (CAD), i.e. bank_account == FX_CAD_ACCOUNT) get an FX conversion journal.
+    # Other CAD-labelled networks (e.g. Vivid Seats (CAD), which deposits to FFB)
+    # are normal USD deposits — no FX entry is created or pushed for them.
     is_cad = "(cad)" in network_display.lower() or " cad" in network_display.lower()
+    fx_applies = is_cad and bank_account == FX_CAD_ACCOUNT
     fx_journal = None
     fx_detail_rows = []
-    if is_cad and usd_received is not None:
+    if fx_applies and usd_received is not None:
         try:
             usd_amt = round(float(usd_received), 2)
         except (TypeError, ValueError):

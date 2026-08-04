@@ -392,8 +392,13 @@
     document.getElementById('evoPaySection').style.display = isTE ? 'block' : 'none';
     document.getElementById('cashReceivedSection').style.display = isTE ? 'none' : 'block';
     const isCAD = lname.replace(/\s/g, '').includes('(cad)');
+    // Only TicketsNow (CAD) runs the Wise CAD->USD conversion, so only it needs the
+    // "Converted USD received" input. Other CAD networks (e.g. Vivid Seats (CAD))
+    // are normal deposits.
+    const isFxCad = isCAD && lname.includes('ticketsnow');
     document.getElementById('cashLabel').textContent = isCAD ? 'CAD received' : 'Cash received';
-    document.getElementById('usdReceivedSection').style.display = (isCAD && !isTE) ? 'block' : 'none';
+    document.getElementById('usdReceivedSection').style.display = (isFxCad && !isTE) ? 'block' : 'none';
+    if (!isFxCad) { document.getElementById('usdInput').value = ''; }
     if (!isTE) { evoPayFile = null; }
 
     checkReady();
@@ -441,13 +446,20 @@
     const isXlsx = lname.endsWith('.xlsx');
     const isTE = lname.includes('ticketevolution');
     let ready = selectedFile && (isTE || isXlsx || cash !== '');
-    if (isCadFile()) ready = ready && usd !== '';   // FX needs the converted USD
+    if (isFxCadFile()) ready = ready && usd !== '';   // FX (TicketsNow CAD) needs the converted USD
     document.getElementById('processBtn').disabled = !ready;
   }
 
   function isCadFile() {
     const n = selectedFile ? selectedFile.name.toLowerCase().replace(/\s/g, '') : '';
     return n.includes('(cad)');
+  }
+
+  function isFxCadFile() {
+    // Only TicketsNow (CAD) does the Wise CAD->USD conversion that needs the
+    // "Converted USD received" input; other CAD files are normal deposits.
+    const n = selectedFile ? selectedFile.name.toLowerCase() : '';
+    return n.replace(/\s/g, '').includes('(cad)') && n.includes('ticketsnow');
   }
 
   function showVerification() {
