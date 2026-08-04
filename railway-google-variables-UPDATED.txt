@@ -1,0 +1,25 @@
+==============================================================
+UPDATE THESE TWO RAILWAY VARIABLES (to send "Other" to the
+"Other" tab on sheet 1VwfKp96...)
+==============================================================
+
+Variable name:
+  GOOGLE_SHEET_TABS
+
+NEW value (Other changed from "skip" to the sheet ID):
+{"Y&S":"1VwfKp96_N_ZjFNJOZOf7EKtwhWbXgjRZACuVPythNQM","StubHub Loan":"1VwfKp96_N_ZjFNJOZOf7EKtwhWbXgjRZACuVPythNQM","Affiliates":"1McWRRDHKD-nzG3AmCEbiS0K7MZjxKylIEqIvFRtFfJY","Other":"1VwfKp96_N_ZjFNJOZOf7EKtwhWbXgjRZACuVPythNQM"}
+
+--------------------------------------------------------------
+
+Variable name:
+  GOOGLE_SHEET_FIXED_TABS
+
+NEW value (added "Other":"Other"):
+{"StubHub Loan":"StubHub Loan Repay","Other":"Other"}
+
+==============================================================
+Raw Editor version (paste both lines at once):
+
+GOOGLE_SHEET_TABS={"Y&S":"1VwfKp96_N_ZjFNJOZOf7EKtwhWbXgjRZACuVPythNQM","StubHub Loan":"1VwfKp96_N_ZjFNJOZOf7EKtwhWbXgjRZACuVPythNQM","Affiliates":"1McWRRDHKD-nzG3AmCEbiS0K7MZjxKylIEqIvFRtFfJY","Other":"1VwfKp96_N_ZjFNJOZOf7EKtwhWbXgjRZACuVPythNQM"}
+GOOGLE_SHEET_FIXED_TABS={"StubHub Loan":"StubHub Loan Repay","Other":"Other"}
+==============================================================
