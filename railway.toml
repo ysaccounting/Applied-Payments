@@ -1,0 +1,52 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+# No startCommand: Railway runs it without a shell, so "$PORT" would be passed
+# to uvicorn literally. The Dockerfile's CMD is shell form and expands it.
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# ---------------------------------------------------------------------------
+# Scheduled jobs — create each as a SEPARATE Railway service on this same repo
+# (Railway defines crons in the dashboard, not in this file).
+#
+#   1. HAL incremental        cron: */5 * * * *
+#      python -m app.worker --hal-incremental
+#      Picks up Airtable edits from the last 15 minutes. A handful of requests,
+#      not the ~180 a full pass needs, so it's cheap to run this often and
+#      stays well inside Airtable's 5 req/sec limit.
+#
+#   2. Bills only             cron: */5 * * * *
+#      python -m app.worker --sync-bills
+#      Open bills from every connected company. ~2,000 open bills pages at 500,
+#      so it is 4 requests per company per run -- against Intuit's limit of 500
+#      per minute PER REALM, which is a fraction of a percent.
+#
+#      It matters because a bill paid OUTSIDE the app (directly in QuickBooks)
+#      only leaves the candidate pool when a sync prunes it. A bill paid INSIDE
+#      the app is drawn down immediately and does not wait for this.
+#
+#      Do not push below 5 minutes without adding an overlap guard first. Each
+#      run fetches every open bill and then deletes any local row it did not
+#      see; that prune is only safe because a run builds its complete picture
+#      before pruning, and nothing currently stops two runs overlapping.
+#
+#   3. Everything, hourly     cron: 0 * * * *
+#      python -m app.worker --hourly
+#      Full HAL pass (safety net for anything incremental missed) plus the full
+#      QuickBooks refresh: open bills, chart of accounts, vendors. Still worth
+#      keeping alongside #2 -- it is what refreshes the chart of accounts and
+#      the vendor list, which the bills-only pass does not touch.
+#
+# Each needs: DATABASE_URL (reference ${{Postgres.DATABASE_URL}}),
+# AIRTABLE_TOKEN, QBO_CLIENT_ID, QBO_CLIENT_SECRET, QBO_ENVIRONMENT,
+# QBO_ALLOWED_REALMS.
+#
+# Other entrypoints, for running by hand:
+#   python -m app.worker --sync-hal     full HAL pass
+#   python -m app.worker --sync-qbo     bills + accounts + vendors
+#   python -m app.worker --sync-bills   bills only
+# ---------------------------------------------------------------------------
