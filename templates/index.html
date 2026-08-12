@@ -396,7 +396,7 @@
     // "Converted USD received" input. Other CAD networks (e.g. Vivid Seats (CAD))
     // are normal deposits.
     const isFxCad = isCAD && lname.includes('ticketsnow');
-    document.getElementById('cashLabel').textContent = isCAD ? 'CAD received' : 'Cash received';
+    document.getElementById('cashLabel').textContent = isFxCad ? 'CAD received' : 'Cash received';
     document.getElementById('usdReceivedSection').style.display = (isFxCad && !isTE) ? 'block' : 'none';
     if (!isFxCad) { document.getElementById('usdInput').value = ''; }
     if (!isTE) { evoPayFile = null; }
@@ -463,7 +463,7 @@
   }
 
   function showVerification() {
-    const _rcv = isCadFile() ? 'CAD received' : 'cash received';
+    const _rcv = isFxCadFile() ? 'CAD received' : 'cash received';
     const cashVal = parseFloat(document.getElementById('cashInput').value);
     if (isNaN(cashVal) || combinedTotal === null) return;
 
