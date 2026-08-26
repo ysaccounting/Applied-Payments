@@ -190,9 +190,12 @@ def _default_order_tag(cat, canon, net_key):
         reason = _norm_reason(canon[15])
         if not reason:
             return ''
-        if reason == _norm_reason(TAG_DEFAULT_REASON['Mutual Cancellation']):
+        # Match on the core reason. The trailing internal code (e.g. " - NA",
+        # " - BR") is only sometimes present in the raw report, so compare by
+        # prefix rather than requiring the exact coded string.
+        if reason.startswith(_norm_reason('Mutually Cancelled')):
             return 'Mutual Cancellation'
-        if reason == _norm_reason(TAG_DEFAULT_REASON['Cancelled Event']):
+        if reason.startswith(_norm_reason('Event Cancelled/Postponed')):
             return 'Cancelled Event'
         return 'Problem Order'
     return ''
