@@ -19,6 +19,7 @@ Order-Tag actions applied to FLAGGED rows (see the Guidelines tab):
     TradeDesk Fees ............. Company := "Other Fees"
     Due from/to TickPick ....... Company := "Due from/to TickPick"
     Not Found .................. Company := "Not Found"
+    Advertising (StubHub) ...... Company := "Advertising"
     More Than One Invoice ...... pass through unchanged (needs Col X = Yes)
 
 Non-flagged rows pass through untouched; any answers on them are ignored.
@@ -47,6 +48,7 @@ COMPANY_REPLACEMENT = {
     'TradeDesk Fees':       'Other Fees',
     'Due from/to TickPick': 'Due from/to TickPick',
     'Not Found':            'Not Found',
+    'Advertising':          'Advertising',   # StubHub only -> StubHub Ad Spend tab
 }
 
 

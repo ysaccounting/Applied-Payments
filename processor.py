@@ -138,6 +138,7 @@ COMPANY_MAPPING = {
     "Slash Financial Inc-Fee": "Affiliates",
     "Ticketwonders2 LLC": "Affiliates",
     "Ticketwonders2 LLC-Fee": "Affiliates",
+    "Advertising": "StubHub Ad Spend",   # Zone 1 "Advertising" tag (StubHub only)
 }
 
 # Case-insensitive lookup dict

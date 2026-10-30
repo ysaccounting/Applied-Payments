@@ -124,10 +124,10 @@ def _tab_name(input_path):
 # TickPick only ever show up on StubHub / TicketsNow / TickPick reports).
 ORDER_TAGS_BASE = ['Cancelled Event', 'Discount', 'More Than One Invoice', 'Mutual Cancellation',
                    'Not Found', 'Problem Order']
-NETWORK_TAGS = {              # substring of the normalised network key -> extra tag
-    'stubhub':    'StubHub Loan',
-    'tickpick':   'Due from/to TickPick',
-    'ticketsnow': 'TradeDesk Fees',
+NETWORK_TAGS = {              # substring of the normalised network key -> extra tag(s)
+    'stubhub':    ['StubHub Loan', 'Advertising'],
+    'tickpick':   ['Due from/to TickPick'],
+    'ticketsnow': ['TradeDesk Fees'],
 }
 
 
@@ -145,9 +145,9 @@ def _order_tags(input_path):
     network-specific tag, kept alphabetical to match the sample."""
     key = _net_key(input_path)
     tags = list(ORDER_TAGS_BASE)
-    for sub, tag in NETWORK_TAGS.items():
+    for sub, extra in NETWORK_TAGS.items():
         if sub in key:
-            tags.append(tag)
+            tags.extend(extra)
     return sorted(tags)
 
 
@@ -160,6 +160,12 @@ def _order_is_zero(v):
         return float(s) == 0
     except ValueError:
         return False
+
+
+def _norm_order(v):
+    """Order# as a plain string ('655709257.0' -> '655709257')."""
+    s = str(v).strip()
+    return s[:-2] if s.endswith('.0') and s[:-2].isdigit() else s
 
 
 def _norm_reason(s):
@@ -180,6 +186,10 @@ def _default_order_tag(cat, canon, net_key):
             any other non-blank reason     -> Problem Order
             blank reason                   -> no default (left for the reviewer)
     """
+    # StubHub bills its advertising against a known order # — pre-tag it
+    # Advertising however the row was flagged (the reviewer can still change it).
+    if 'stubhub' in net_key and _norm_order(canon[1]) in P.ADVERTISING_ORDERS:
+        return 'Advertising'
     if cat == 'mti':
         return 'More Than One Invoice'
     if cat == 'notfound':
@@ -311,7 +321,8 @@ def generate_review_workbook(input_path):
     # U,V,W go black for tags that need no per-column input.
     ws.conditional_formatting.add(f'U2:W{last}',
         FormulaRule(formula=['OR($T2="Discount",$T2="Not Found",$T2="More Than One Invoice",'
-                             '$T2="Due from/to TickPick",$T2="StubHub Loan",$T2="TradeDesk Fees")'],
+                             '$T2="Due from/to TickPick",$T2="StubHub Loan",$T2="TradeDesk Fees",'
+                             '$T2="Advertising")'],
                     fill=black, font=blackfont, stopIfTrue=False))
     # X is only used for More Than One Invoice — black for any other selected tag.
     ws.conditional_formatting.add(f'X2:X{last}',
@@ -430,26 +441,31 @@ def _build_guidelines_tab(wb):
          '  show signs of being problem orders when searched in Gmail.',
          51.0),
         (16, _YEL,
+         title_cell('Advertising', '(StubHub charges for advertising, billed against order # 655709257)'),
+         '>Replaces the Company with Advertising and only displays on StubHub reports. No further action required.\n'
+         '>Shows up as a Not Found chargeback. Lands on the StubHub Ad Spend tab and one combined Advertising line on the bank deposit.',
+         38.0),
+        (17, _YEL,
          title_cell('TradeDesk Fees', '(monthly fulfillment fees paid from Y&S to TicketsNow)'),
          '>Replaces the Company with Other Fees and only displays on TicketsNow reports. No further action required.\n'
          '>Shows up as Not Found chargeback with no order #, and usually for tens of thousands of dollars.',
          25.5),
-        (17, _PEACH,
+        (18, _PEACH,
          title_cell('Due from/to TickPick', '(monthly repayment to Y&S for theft loss)'),
          '>Replaces the Company and only displays on TickPick reports. No further action required.\n'
          '>Shows up as Not Found payment, but hopefully with order # DueFromTickPick.',
          30.0),
-        (18, _PEACH,
+        (19, _PEACH,
          title_cell('Not Found', '(orders with status "Skipped Invoice Not Found")'),
          '>Replaces the Company. No further action required.',
          30.0),
-        (19, FILL_MTI_CHARGEBACK,
+        (20, FILL_MTI_CHARGEBACK,
          title_cell('More Than One Invoice and Chargeback',
                     '(orders with status "Skipped Found more than one invoice with this Ext Order Number and Client"\n'
                     'and negative amount)'),
          '>Treat the same as regular chargebacks for cancelled events and problem orders.',
          42.0),
-        (20, _BLUE,
+        (21, _BLUE,
          title_cell('More Than One Invoice',
                     '(orders with status "Skipped Found more than one invoice with this Ext Order Number and Client")'),
          '>Cancel the older invoice in TicketVault and mark paid the newer invoice in TicketVault, then put Yes in Column X.\n'
@@ -462,8 +478,8 @@ def _build_guidelines_tab(wb):
         rs.row_dimensions[r].height = h
 
     # Blocking conditions
-    rs['A22'] = 'What blocks Zone 2 processing'
-    rs['A22'].font = Font(name='Arial', size=11, bold=True, color='FF9C0006')
+    rs['A23'] = 'What blocks Zone 2 processing'
+    rs['A23'].font = Font(name='Arial', size=11, bold=True, color='FF9C0006')
     blocks = [
         'Any highlighted row without an Order Tag assigned',
         'A Problem Order row without an answer for Already Paid?',
@@ -471,13 +487,13 @@ def _build_guidelines_tab(wb):
         "A Problem Order or Cancelled Event or Mutual Cancellation row that doesn't have a cancellation reason filled in",
         "A More Than One Invoice row that doesn't say Yes for Cancelled Old / Paid New?",
     ]
-    r = 23
+    r = 24
     for b in blocks:
         c = rs.cell(row=r, column=1, value='\u2022  ' + b)
         c.font = FONT; c.alignment = wrapTop
         rs.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
         r += 1
-    rs.merge_cells(start_row=28, start_column=1, end_row=28, end_column=2)
+    rs.merge_cells(start_row=29, start_column=1, end_row=29, end_column=2)
 
     rs.column_dimensions['A'].width = 83.28515625
     rs.column_dimensions['B'].width = 113.0

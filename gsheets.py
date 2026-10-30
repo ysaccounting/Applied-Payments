@@ -82,6 +82,20 @@ DETAIL_HEADER = [
 ]
 
 
+# Source tabs whose rows are written with a trimmed column set. Each entry is a
+# list of (sheet header, row key). StubHub Ad Spend only needs these six, and the
+# Google Sheet calls the Network column "Name".
+TAB_COLUMNS = {
+    "StubHub Ad Spend": [("Company", "Company"), ("Date", "Date"), ("Name", "Network"),
+                         ("Type", "Type"), ("Order #", "Order#"), ("Amount", "Amount")],
+}
+
+
+def _columns_for_tab(tab):
+    """[(header, key), ...] for a source tab — trimmed set if configured, else the full detail set."""
+    return TAB_COLUMNS.get(tab) or [(c, c) for c in DETAIL_HEADER]
+
+
 class SheetsNotConfigured(Exception):
     pass
 
@@ -119,7 +133,7 @@ def _month_tab_name(date_str):
 
 
 def _detail_row_to_list(rec):
-    return [rec.get(col, "") for col in DETAIL_HEADER]
+    return [rec.get(key, "") for _, key in _columns_for_tab(rec.get("Tab", ""))]
 
 
 def _worksheet_for_row(rec):
@@ -136,20 +150,23 @@ def _worksheet_for_row(rec):
 
 def _group_by_worksheet(recs):
     """Group rows by their destination worksheet name within one spreadsheet."""
-    out = {}
+    out = {}       # worksheet -> {"header": [...], "rows": [...]}
     for rec in recs:
-        out.setdefault(_worksheet_for_row(rec), []).append(_detail_row_to_list(rec))
+        g = out.setdefault(_worksheet_for_row(rec), {
+            "header": [h for h, _ in _columns_for_tab(rec.get("Tab", ""))], "rows": []})
+        g["rows"].append(_detail_row_to_list(rec))
     return out
 
 
-def _append_rows_to_month_tab(ss, month, rows, existing):
-    """Append rows into a single 'Month YYYY' worksheet of `ss`, creating it if needed."""
+def _append_rows_to_month_tab(ss, month, rows, existing, header=None):
+    """Append rows into a single worksheet of `ss`, creating it if needed."""
     from string import ascii_uppercase
-    last_col = ascii_uppercase[len(DETAIL_HEADER) - 1]  # e.g. 14 cols -> 'N'
+    header = header or DETAIL_HEADER
+    last_col = ascii_uppercase[len(header) - 1]  # e.g. 14 cols -> 'N'
     ws = existing.get(month)
     if ws is None:
-        ws = ss.add_worksheet(title=month, rows=max(500, len(rows) + 50), cols=len(DETAIL_HEADER))
-        ws.append_row(DETAIL_HEADER, value_input_option="USER_ENTERED")
+        ws = ss.add_worksheet(title=month, rows=max(500, len(rows) + 50), cols=len(header))
+        ws.append_row(header, value_input_option="USER_ENTERED")
         try:
             ws.freeze(rows=1)
             ws.format(f"A1:{last_col}1", {"textFormat": {"bold": True}})
@@ -157,7 +174,7 @@ def _append_rows_to_month_tab(ss, month, rows, existing):
             pass  # formatting is cosmetic; never fail the append over it
         existing[month] = ws
     elif not ws.row_values(1):
-        ws.append_row(DETAIL_HEADER, value_input_option="USER_ENTERED")
+        ws.append_row(header, value_input_option="USER_ENTERED")
     ws.append_rows(rows, value_input_option="USER_ENTERED")
 
 
@@ -209,9 +226,9 @@ def append_detail(detail_rows):
         existing = {ws.title: ws for ws in ss.worksheets()}
         by_ws = _group_by_worksheet(recs)
         month_counts = {}
-        for ws_name, rows in by_ws.items():
-            _append_rows_to_month_tab(ss, ws_name, rows, existing)
-            month_counts[ws_name] = len(rows)
+        for ws_name, grp in by_ws.items():
+            _append_rows_to_month_tab(ss, ws_name, grp["rows"], existing, grp["header"])
+            month_counts[ws_name] = len(grp["rows"])
         total = sum(month_counts.values())
         grand_total += total
         sheets_summary.append({
