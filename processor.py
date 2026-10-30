@@ -145,6 +145,12 @@ COMPANY_MAPPING_LOWER = {k.lower(): v for k, v in COMPANY_MAPPING.items()}
 
 YSA_VARIANTS = {"YSA", "YSA 2", "YSA 3"}
 
+# StubHub advertising order numbers — specific order IDs StubHub uses to bill us
+# for advertising. They don't exist in TicketVault and come back as "Not Found";
+# recode them to the Advertising account / "StubHub Ad Spend" category so they are
+# excluded from Other, land on their own tab, and post to the bank deposit.
+ADVERTISING_ORDERS = {"655709257"}
+
 HEADER_FILL = PatternFill("solid", start_color="375623", end_color="375623")
 HEADER_FONT = Font(name="Arial", bold=True, color="FFFFFF", size=10)
 SECTION_FONT = Font(name="Arial", bold=True, size=10)
@@ -156,6 +162,9 @@ DATA_COLS = [
     "Company", "Date", "Network", "Type", "Order#", "Amount",
     "Performer", "Venue", "EventDate", "Section", "Row", "Seat", "Qty", "Reason"
 ]
+
+# Columns for the StubHub Ad Spend tab (a trimmed view of the standard columns).
+ADSPEND_COLS = ["Company", "Date", "Network", "Type", "Order#", "Amount"]
 
 COL_WIDTHS = {
     "Company": 20, "Date": 12, "Network": 14, "Type": 18,
@@ -376,6 +385,16 @@ def build_row(r, remit_date_str, network, evopay_sale=None, evopay_cancel=None):
     else:
         row_date = sale_date or cancel_date or remit_date_str
 
+    # StubHub advertising charge — a specific order number StubHub uses to bill us
+    # for advertising. It comes back as "Not Found" in TicketVault; recode it to the
+    # Advertising account and the "StubHub Ad Spend" category so it is excluded from
+    # Other and lands on its own tab + the bank deposit. Normalize a possible
+    # float-formatted order key (e.g. "655709257.0") before matching.
+    _order_norm = order_key[:-2] if order_key.endswith(".0") and order_key[:-2].isdigit() else order_key
+    if _order_norm in ADVERTISING_ORDERS:
+        company_out = "Advertising"
+        category = "StubHub Ad Spend"
+
     return {
         "Company": company_out,
         "Date": row_date,
@@ -410,15 +429,16 @@ def write_data_cell(ws, row, col, value, fmt=None, align=ALIGN_LEFT):
     return cell
 
 
-def style_data_tab(ws, df):
-    for col_idx, col_name in enumerate(DATA_COLS, 1):
+def style_tab_cols(ws, df, cols):
+    """Write a styled data tab using an arbitrary subset of columns."""
+    for col_idx, col_name in enumerate(cols, 1):
         cell = ws.cell(row=1, column=col_idx, value=col_name)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
         cell.alignment = ALIGN_CENTER
 
     for row_idx, row in df.iterrows():
-        for col_idx, col_name in enumerate(DATA_COLS, 1):
+        for col_idx, col_name in enumerate(cols, 1):
             val = row[col_name]
             cell = ws.cell(row=row_idx + 2, column=col_idx, value=val)
             cell.font = DATA_FONT
@@ -430,11 +450,15 @@ def style_data_tab(ws, df):
             else:
                 cell.alignment = ALIGN_LEFT
 
-    for col_idx, col_name in enumerate(DATA_COLS, 1):
+    for col_idx, col_name in enumerate(cols, 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = COL_WIDTHS.get(col_name, 15)
 
     ws.freeze_panes = "A2"
-    ws.auto_filter.ref = f"A1:{get_column_letter(len(DATA_COLS))}1"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}1"
+
+
+def style_data_tab(ws, df):
+    style_tab_cols(ws, df, DATA_COLS)
 
 
 # Network short codes for Deposit # (QBO 21-char limit)
@@ -583,6 +607,7 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
     affiliates_df = df_out[df_out["_category"] == "Affiliates"].copy()
     stubhub_df = df_out[df_out["_category"] == "Y&S - StubHub"].copy()
     other_df = df_out[df_out["_category"] == "Other"].copy()
+    adspend_df = df_out[df_out["_category"] == "StubHub Ad Spend"].copy()
     # TradeDesk Fees ("Other Fees") and Due from/to TickPick post to the bank
     # deposit but should NOT appear in the Other detail tab or the Other Google
     # Sheet — keep a detail-only view that drops them.
@@ -601,6 +626,10 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
     sh_grouped.columns = ["Account", "Amount"]
     other_grouped = other_df.groupby("Company")["Amount"].sum().reset_index()
     other_grouped.columns = ["Account", "Amount"]
+    # StubHub Ad Spend — one combined "Advertising" line on the deposit.
+    adspend_amt = round(adspend_df["Amount"].sum(), 2) if not adspend_df.empty else 0.0
+    adspend_row = (pd.DataFrame([{"Account": "Advertising", "Amount": adspend_amt}])
+                   if adspend_amt != 0 else pd.DataFrame(columns=["Account", "Amount"]))
     ys_cancel_amt = round(ys_df[ys_df["Type"] == "Cancellation Fees"]["Amount"].sum(), 2)
     # Only emit a Cancellation Fees line when there actually are fees — otherwise a
     # $0.00 line shows up on the deposit (and would post a $0 line to QBO). Mirrors
@@ -608,7 +637,7 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
     cancel_row = (pd.DataFrame([{"Account": "Cancellation Fees", "Amount": ys_cancel_amt}])
                   if ys_cancel_amt != 0 else pd.DataFrame(columns=["Account", "Amount"]))
 
-    deposit_rows = pd.concat([aff_grouped, sh_grouped, other_grouped, cancel_row], ignore_index=True)
+    deposit_rows = pd.concat([aff_grouped, sh_grouped, other_grouped, adspend_row, cancel_row], ignore_index=True)
     deposit_rows["Amount"] = deposit_rows["Amount"].round(2)
     deposit_rows["Network"] = deposit_network_full
     deposit_rows["Date"] = remit_date_str
@@ -738,10 +767,13 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
             # Other
             oth_d = other_df[other_df["Date"] == d].groupby("Company")["Amount"].sum().reset_index()
             oth_d.columns = ["Account", "Amount"]
+            # StubHub Ad Spend (combined Advertising line)
+            ad_amt_d = round(adspend_df[adspend_df["Date"] == d]["Amount"].sum(), 2)
+            ad_row_d = pd.DataFrame([{"Account": "Advertising", "Amount": ad_amt_d}]) if ad_amt_d != 0 else pd.DataFrame(columns=["Account", "Amount"])
             # Cancellation fees
             cancel_d = round(ys_df[(ys_df["Date"] == d) & (ys_df["Type"] == "Cancellation Fees")]["Amount"].sum(), 2)
             cancel_row_d = pd.DataFrame([{"Account": "Cancellation Fees", "Amount": cancel_d}]) if cancel_d != 0 else pd.DataFrame(columns=["Account","Amount"])
-            d_rows = pd.concat([aff_d, sh_d, oth_d, cancel_row_d], ignore_index=True)
+            d_rows = pd.concat([aff_d, sh_d, oth_d, ad_row_d, cancel_row_d], ignore_index=True)
             d_rows["Amount"] = d_rows["Amount"].round(2)
             d_rows["Network"] = deposit_network_full
             d_rows["Date"] = d
@@ -860,6 +892,11 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
         ws = wb1.create_sheet(tab_name)
         style_data_tab(ws, df)
 
+    # StubHub Ad Spend tab (trimmed columns), only when there are ad-spend rows.
+    if not adspend_df.empty:
+        ws_ad = wb1.create_sheet("StubHub Ad Spend")
+        style_tab_cols(ws_ad, adspend_df[ADSPEND_COLS].reset_index(drop=True), ADSPEND_COLS)
+
     # ── Build Bank Deposit workbook ───────────────────────────────────────────
     bd_cols = ["Account", "Amount", "Network", "Date", "Deposit #", "Bank Account"]
     bd_col_widths = [28, 14, 20, 12, 32, 14]
@@ -918,6 +955,7 @@ def process(csv_path, filename, evopay_path=None, raw_df=None, usd_received=None
         ("Affiliates", affiliates_df),
         ("StubHub Loan", stubhub_df),
         ("Other", other_df_detail),
+        ("StubHub Ad Spend", adspend_df),
     ]
     detail_rows_data = []
     for tab_name, df in detail_source:
